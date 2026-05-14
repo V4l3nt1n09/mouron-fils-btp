@@ -713,35 +713,21 @@ button:active, .btn:active {
 .btn-icon-secondary:hover{ background:var(--border); }
 .btn-icon-secondary:active{ transform:scale(.92); }
 
-/* ══════════════════════════════════════════════════════
-   💼 DEVIS — cartes stats et lignes
-   ══════════════════════════════════════════════════════ */
-.stat-card-mini {
-  padding: 14px 16px;
-  border-radius: 12px;
-  text-align: left;
-  transition: all .2s;
+/* 💰 Badge devis Interfast sur cards chantier */
+.devis-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:3px 9px;
+  border-radius:12px;
+  font-size:11px;font-weight:700;
+  letter-spacing:.2px;
 }
-.stat-card-mini:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0,0,0,.08);
+.devis-badge.devis-ok{
+  background:#dcfce7;
+  color:#15803d;
 }
-.devis-card {
-  margin-bottom: 10px;
-  transition: all .2s;
-}
-.devis-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(58,111,216,.12);
-}
-.devis-line input,
-.devis-line select {
-  width: 100%;
-}
-@media (max-width: 600px) {
-  .devis-line > div:nth-child(2) {
-    grid-template-columns: 1fr 1fr !important;
-  }
+.devis-badge.devis-missing{
+  background:#fef3c7;
+  color:#92400e;
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1180,6 +1166,10 @@ button:active, .btn:active {
 .interv-section:last-child{border-bottom:none;}
 .interv-section-title{font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
 .interv-section-title .icon{font-size:14px;}
+.interv-form-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+@media(max-width:700px){
+  .interv-form-grid-3{grid-template-columns:1fr;}
+}
 
 /* Toggle client existant / nouveau */
 .client-mode-switch{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px;margin-bottom:14px;}
@@ -1811,6 +1801,10 @@ textarea.report-input{resize:vertical;min-height:90px;font-family:'Inter',sans-s
     <div class="d-section" id="dp-description-section">
       <div class="d-section-title">Description</div>
       <div id="dp-description" style="font-size:13px;color:var(--text2);line-height:1.5;white-space:pre-wrap;">—</div>
+    </div>
+    <div class="d-section" id="dp-devis-section" style="display:none;">
+      <div class="d-section-title">💰 Devis Interfast</div>
+      <div id="dp-devis-content"></div>
     </div>
     <div class="d-section" id="dp-pdf-section">
       <div class="d-section-title">📄 Documents</div>
@@ -2703,13 +2697,13 @@ document.addEventListener('visibilitychange', () => {
 // ══════════════════════════════════════════════════════
 
 const ROLE_CONFIG = {
-  gerant:      { label:'Gérant',          icon:'👔', color:'#3a6fd8', pillClass:'role-gerant',     nav:['dashboard','calendrier','chantiers','clients','devis','rapports','utilisateurs','equipes','messagerie','documents','stocks','heures','donnees'] },
-  charge:      { label:'Chargé d\'affaire',icon:'💼', color:'#e67e22', pillClass:'role-charge',     nav:['dashboard','calendrier','chantiers','clients','devis','rapports','equipes','messagerie','documents','stocks'] },
+  gerant:      { label:'Gérant',          icon:'👔', color:'#3a6fd8', pillClass:'role-gerant',     nav:['dashboard','calendrier','chantiers','clients','rapports','utilisateurs','equipes','messagerie','documents','stocks','heures','donnees'] },
+  charge:      { label:'Chargé d\'affaire',icon:'💼', color:'#e67e22', pillClass:'role-charge',     nav:['dashboard','calendrier','chantiers','clients','rapports','equipes','messagerie','documents','stocks'] },
   comptable:   { label:'Comptable',       icon:'📊', color:'#27ae60', pillClass:'role-comptable',   nav:['rapports','documents','heures-personnel','messagerie'] },
   'chef-equipe':{ label:'Chef d\'équipe', icon:'🦺', color:'#8e44ad', pillClass:'role-chef-equipe', nav:['mon-planning','mes-chantiers','mes-rapports','mes-horaires','messagerie'] },
   depanneur:   { label:'Dépanneur',       icon:'🛠', color:'#0891b2', pillClass:'role-depanneur',   nav:['mon-planning','mes-chantiers','mes-rapports','mes-horaires','messagerie'] },
   ouvrier:     { label:'Ouvrier',         icon:'👷', color:'#e74c3c', pillClass:'role-ouvrier',     nav:['mon-planning','mes-horaires','messagerie'] },
-  secretaire:  { label:'Secrétaire',      icon:'📋', color:'#9d174d', pillClass:'role-secretaire',  nav:['dashboard','calendrier','chantiers','clients','devis','rapports','equipes','messagerie','stocks'] },
+  secretaire:  { label:'Secrétaire',      icon:'📋', color:'#9d174d', pillClass:'role-secretaire',  nav:['dashboard','calendrier','chantiers','clients','rapports','equipes','messagerie','stocks'] },
 };
 
 // ══ BASE UTILISATEURS — Équipe MOURON & FILS ══
@@ -3064,12 +3058,8 @@ const DataStore = {
     'MOIS_VALIDES',
     'CONVERSATIONS',
     'INVITED_USERS',
-    'DEVIS_DB',
-    'DEVIS_CATALOG',
     'nextClientId',
     'nextChantierId',
-    'nextDevisNum',
-    'nextCatalogId',
   ],
 
   _saveTimer: null,
@@ -3766,7 +3756,6 @@ const NAV_ITEMS = {
   calendrier:        { icon:'📅', label:'Calendrier',         section:'Principal' },
   chantiers:         { icon:'📋', label:'Chantiers',          section:'Principal', badge:8 },
   clients:           { icon:'👥', label:'Clients',            section:'Principal' },
-  devis:             { icon:'💼', label:'Devis',              section:'Commercial' },
   rapports:          { icon:'📝', label:'Rapports',           section:'Terrain',   badge:'3' },
   utilisateurs:      { icon:'👤', label:'Utilisateurs',       section:'Administration', badge:'!' },
   equipes:           { icon:'👷', label:'Équipes',            section:'Gestion' },
@@ -3814,9 +3803,7 @@ const PAGE_TITLES = {
   'mes-horaires':'Feuilles d\'heures', 'saisie-jour':'Saisie d\'une journée',
   'nouvelle-intervention':'Nouvelle intervention',
   messagerie:'Messagerie', 'conversation':'Conversation',
-  donnees:'Sauvegarde des données',
-  // 💼 Module Devis
-  devis:'Devis', 'nouveau-devis':'Nouveau devis', 'edit-devis':'Modifier le devis'
+  donnees:'Sauvegarde des données'
 };
 
 // ══════════════════════════════════════════════════════
@@ -4002,9 +3989,6 @@ function renderPage(id) {
     case 'conversation':      renderConversation(div); break;
     case 'donnees':           renderDonnees(div); break;
     case 'equipes':           renderEquipes(div); break;
-    case 'devis':             renderDevis(div); break;
-    case 'nouveau-devis':     renderNouveauDevis(div); break;
-    case 'edit-devis':        renderEditDevis(div); break;
     default:
       div.innerHTML = `<div class="empty-state"><div class="emoji">🚧</div><h3>${PAGE_TITLES[id]||id}</h3><p>Module en cours de développement</p></div>`;
   }
@@ -4416,6 +4400,7 @@ let chantiersFilters = {
   status: 'tous',     // tous | encours | retard | termine
   client: '',         // recherche par nom de client
   team: '',           // initiales d'un membre d'équipe
+  devis: 'tous',      // tous | avec | sans
   sortBy: 'date',     // date | client | status | pct
   sortOrder: 'desc',  // desc | asc
 };
@@ -4437,6 +4422,13 @@ function getFilteredChantiers() {
   // Filtre par membre d'équipe
   if (chantiersFilters.team) {
     list = list.filter(c => (c.equipe || []).includes(chantiersFilters.team));
+  }
+
+  // 💰 Filtre par présence devis Interfast
+  if (chantiersFilters.devis === 'avec') {
+    list = list.filter(c => c.devisInterfast && (c.devisInterfast.numero || c.devisInterfast.pdfFile));
+  } else if (chantiersFilters.devis === 'sans') {
+    list = list.filter(c => !c.devisInterfast || (!c.devisInterfast.numero && !c.devisInterfast.pdfFile));
   }
 
   // Tri
@@ -4482,6 +4474,14 @@ function renderChantiers(div) {
         <select onchange="chantiersFilters.team=this.value;renderChantiers(document.getElementById('content-area'))" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff;">
           <option value="" ${!chantiersFilters.team?'selected':''}>Tous</option>
           ${Object.values(TEAM_FULL).map(m => `<option value="${m.initials}" ${chantiersFilters.team===m.initials?'selected':''}>${escapeHtml(m.name)} (${m.initials})</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">💰 Devis Interfast</label>
+        <select onchange="chantiersFilters.devis=this.value;renderChantiers(document.getElementById('content-area'))" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff;">
+          <option value="tous" ${chantiersFilters.devis==='tous'?'selected':''}>Tous</option>
+          <option value="avec" ${chantiersFilters.devis==='avec'?'selected':''}>💰 Avec devis</option>
+          <option value="sans" ${chantiersFilters.devis==='sans'?'selected':''}>⚠️ Sans devis</option>
         </select>
       </div>
       <div>
@@ -4542,7 +4542,7 @@ function setChantiersStatus(status) {
 }
 
 function resetChantiersFilters() {
-  chantiersFilters = { status: 'tous', client: '', team: '', sortBy: 'date', sortOrder: 'desc' };
+  chantiersFilters = { status: 'tous', client: '', team: '', devis: 'tous', sortBy: 'date', sortOrder: 'desc' };
   renderChantiers(document.getElementById('content-area'));
   showToast('↺ Filtres réinitialisés');
 }
@@ -5126,6 +5126,13 @@ let newInterv = {
   calMonth: null,      // {y, m} pour navigation calendrier
   pdfFiles: [],        // [{name, size}]
   photos: [],          // [emoji simulé pour démo]
+  // 💰 Devis Interfast (optionnel)
+  devisInterfast: {
+    numero: '',
+    date: '',
+    montantTTC: '',
+    pdfFile: null,     // {name, size, dataUrl} ou null
+  },
 };
 
 let nouvIntervStep = 'form'; // pour gérer l'état recherche client
@@ -5146,6 +5153,7 @@ function startNewIntervention() {
     calMonth: { y: today.getFullYear(), m: today.getMonth() },
     pdfFiles: [],
     photos: [],
+    devisInterfast: { numero: '', date: '', montantTTC: '', pdfFile: null },
   };
   navigateTo('nouvelle-intervention');
 }
@@ -5257,15 +5265,53 @@ function renderNouvelleIntervention(div) {
       </div>
     </div>
 
+    <!-- ── 💰 DEVIS INTERFAST (optionnel) ── -->
+    <div class="interv-section">
+      <div class="interv-section-title"><span class="icon">💰</span> Devis Interfast <span style="font-weight:500;text-transform:none;color:var(--text3);letter-spacing:0;font-size:11px;margin-left:6px;">(optionnel mais recommandé)</span></div>
+
+      <div class="interv-form-grid-3">
+        <div>
+          <label class="report-label">N° devis Interfast</label>
+          <input type="text" class="report-input" placeholder="DEV-2026-001" value="${escapeHtml(newInterv.devisInterfast.numero||'')}" oninput="newInterv.devisInterfast.numero=this.value">
+        </div>
+        <div>
+          <label class="report-label">Date du devis</label>
+          <input type="date" class="report-input" value="${newInterv.devisInterfast.date||''}" oninput="newInterv.devisInterfast.date=this.value">
+        </div>
+        <div>
+          <label class="report-label">Montant TTC (€)</label>
+          <input type="number" step="0.01" min="0" class="report-input" placeholder="1250.00" value="${newInterv.devisInterfast.montantTTC||''}" oninput="newInterv.devisInterfast.montantTTC=this.value">
+        </div>
+      </div>
+
+      <label class="upload-zone" for="devis-pdf-upload" style="margin-top:10px;">
+        <span class="upload-zone-icon">📎</span>
+        <div class="upload-zone-content">
+          <div class="upload-zone-title">${newInterv.devisInterfast.pdfFile ? 'Remplacer le PDF du devis' : 'Joindre le PDF du devis Interfast'}</div>
+          <div class="upload-zone-sub">Pour archivage et consultation rapide depuis le chantier</div>
+        </div>
+      </label>
+      <input type="file" id="devis-pdf-upload" accept=".pdf,application/pdf" style="display:none;" onchange="onDevisPdfSelected(this.files)">
+
+      ${newInterv.devisInterfast.pdfFile ? `<div class="upload-files-list">
+        <div class="upload-file-item">
+          <span class="upload-file-icon">💰</span>
+          <span class="upload-file-name">${escapeHtml(newInterv.devisInterfast.pdfFile.name)}</span>
+          <span class="upload-file-size">${formatFileSize(newInterv.devisInterfast.pdfFile.size)}</span>
+          <button class="upload-file-remove" onclick="removeDevisPdf()" title="Supprimer">✕</button>
+        </div>
+      </div>` : ''}
+    </div>
+
     <!-- ── DOCUMENTS PDF ── -->
     <div class="interv-section">
-      <div class="interv-section-title"><span class="icon">📄</span> Documents PDF (devis, plans, autorisations...)</div>
+      <div class="interv-section-title"><span class="icon">📄</span> Autres documents PDF (plans, autorisations...)</div>
 
       <label class="upload-zone" for="pdf-upload">
         <span class="upload-zone-icon">📎</span>
         <div class="upload-zone-content">
           <div class="upload-zone-title">Joindre un ou plusieurs PDF</div>
-          <div class="upload-zone-sub">Devis signé, plans, attestation TVA, etc.</div>
+          <div class="upload-zone-sub">Plans, attestation TVA, autorisations, etc.</div>
         </div>
       </label>
       <input type="file" id="pdf-upload" accept=".pdf,application/pdf" multiple style="display:none;" onchange="onPdfSelected(this.files)">
@@ -5507,6 +5553,37 @@ function removePdf(idx) {
   renderPage('nouvelle-intervention');
 }
 
+// 💰 Gestion du PDF du devis Interfast
+function onDevisPdfSelected(files) {
+  syncIntervFromDOM();
+  const f = files[0];
+  if (!f) return;
+  // Limite à 5 Mo pour éviter de saturer localStorage / Supabase
+  if (f.size > 5 * 1024 * 1024) {
+    showToast('⚠ PDF trop volumineux (max 5 Mo)');
+    return;
+  }
+  // Convertir en base64 pour stockage local
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    newInterv.devisInterfast.pdfFile = {
+      name: f.name,
+      size: f.size,
+      dataUrl: e.target.result,
+    };
+    showToast(`💰 Devis "${f.name}" ajouté`);
+    renderPage('nouvelle-intervention');
+  };
+  reader.readAsDataURL(f);
+}
+
+function removeDevisPdf() {
+  syncIntervFromDOM();
+  newInterv.devisInterfast.pdfFile = null;
+  showToast('🗑 PDF du devis retiré');
+  renderPage('nouvelle-intervention');
+}
+
 function onPhotosSelected(files) {
   syncIntervFromDOM();
   Array.from(files).forEach(f => {
@@ -5600,6 +5677,13 @@ function submitNouvelleIntervention() {
     pdfFiles: newInterv.pdfFiles,
     photos: newInterv.photos,
     selectedDates: sortedDates,
+    // 💰 Devis Interfast (peut être vide)
+    devisInterfast: {
+      numero: (newInterv.devisInterfast.numero||'').trim(),
+      date: newInterv.devisInterfast.date||'',
+      montantTTC: newInterv.devisInterfast.montantTTC ? Number(newInterv.devisInterfast.montantTTC) : null,
+      pdfFile: newInterv.devisInterfast.pdfFile,
+    },
   };
 
   CHANTIERS.unshift(newChantier);
@@ -6286,750 +6370,6 @@ function createConversationAndOpen() {
 // ══════════════════════════════════════════════════════
 // 💾 SAUVEGARDE — Page de gestion des données
 // ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════════════════
-// 💼 MODULE DEVIS
-// ══════════════════════════════════════════════════════════════════════════
-
-// Base de données des devis
-let DEVIS_DB = [];
-let nextDevisNum = 1;
-
-// Statuts possibles d'un devis
-const DEVIS_STATUS = {
-  brouillon:  { label: 'Brouillon',    color: '#6b7280', bg: '#f3f4f6' },
-  envoye:     { label: 'Envoyé',       color: '#1e40af', bg: '#dbeafe' },
-  accepte:    { label: 'Accepté',      color: '#15803d', bg: '#dcfce7' },
-  refuse:     { label: 'Refusé',       color: '#991b1b', bg: '#fee2e2' },
-  expire:     { label: 'Expiré',       color: '#9a3412', bg: '#ffedd5' },
-};
-
-// Taux de TVA français (BTP)
-const TVA_RATES = [
-  { value: 0,   label: '0% (exonéré)' },
-  { value: 2.1, label: '2,1% (taux super-réduit)' },
-  { value: 5.5, label: '5,5% (rénovation énergétique)' },
-  { value: 10,  label: '10% (travaux logements > 2 ans)' },
-  { value: 20,  label: '20% (taux normal)' },
-];
-
-// Catalogue d'articles fréquents (à enrichir au fil du temps)
-let DEVIS_CATALOG = [
-  { id: 1, designation: "Main d'œuvre - Plomberie", unit: 'h', price: 45, tva: 10, category: 'Main d\'œuvre' },
-  { id: 2, designation: "Main d'œuvre - Électricité", unit: 'h', price: 48, tva: 10, category: 'Main d\'œuvre' },
-  { id: 3, designation: "Main d'œuvre - Maçonnerie", unit: 'h', price: 42, tva: 10, category: 'Main d\'œuvre' },
-  { id: 4, designation: "Main d'œuvre - Carrelage", unit: 'h', price: 45, tva: 10, category: 'Main d\'œuvre' },
-  { id: 5, designation: "Main d'œuvre - Peinture", unit: 'h', price: 38, tva: 10, category: 'Main d\'œuvre' },
-  { id: 6, designation: "Déplacement", unit: 'forfait', price: 50, tva: 20, category: 'Divers' },
-];
-let nextCatalogId = 7;
-
-// État du devis en cours d'édition
-let currentDevis = null;
-
-// ── Génère un numéro de devis (format DV-2026-001) ──
-function generateDevisRef() {
-  const year = new Date().getFullYear();
-  const num = String(nextDevisNum).padStart(3, '0');
-  nextDevisNum++;
-  return `DV-${year}-${num}`;
-}
-
-// ── Calcule les totaux d'un devis ──
-function computeDevisTotals(devis) {
-  let totalHT = 0;
-  const tvaParTaux = {}; // { 10: 50, 20: 100, ... }
-
-  (devis.lines || []).forEach(line => {
-    const qty = Number(line.qty) || 0;
-    const price = Number(line.price) || 0;
-    const tva = Number(line.tva) || 0;
-    const lineHT = qty * price;
-    totalHT += lineHT;
-    if (!tvaParTaux[tva]) tvaParTaux[tva] = 0;
-    tvaParTaux[tva] += lineHT * (tva / 100);
-  });
-
-  const totalTVA = Object.values(tvaParTaux).reduce((a, b) => a + b, 0);
-  const totalTTC = totalHT + totalTVA;
-
-  return {
-    totalHT: +totalHT.toFixed(2),
-    totalTVA: +totalTVA.toFixed(2),
-    totalTTC: +totalTTC.toFixed(2),
-    tvaParTaux,
-  };
-}
-
-// ── Format monétaire FR ──
-function fmtEur(amount) {
-  return Number(amount || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
-}
-
-// ══════════════════════════════════════════════════════
-// 📋 PAGE LISTE DES DEVIS
-// ══════════════════════════════════════════════════════
-let devisFilters = { status: 'tous', search: '' };
-
-function getFilteredDevis() {
-  let list = DEVIS_DB.slice();
-  if (devisFilters.status !== 'tous') {
-    list = list.filter(d => d.status === devisFilters.status);
-  }
-  if (devisFilters.search.trim()) {
-    const q = devisFilters.search.toLowerCase();
-    list = list.filter(d =>
-      (d.ref || '').toLowerCase().includes(q) ||
-      (d.client?.name || '').toLowerCase().includes(q) ||
-      (d.objet || '').toLowerCase().includes(q)
-    );
-  }
-  // Tri par date la plus récente
-  list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  return list;
-}
-
-function renderDevis(div) {
-  const canEdit = ['gerant', 'charge', 'secretaire'].includes(currentUser.role);
-  if (!canEdit) {
-    div.innerHTML = emptyState({
-      icon: '🔒',
-      title: 'Accès restreint',
-      message: 'Seuls les gérants, chargés d\'affaires et secrétaires ont accès à la gestion des devis.',
-    });
-    return;
-  }
-
-  const filtered = getFilteredDevis();
-  const totalCount = DEVIS_DB.length;
-
-  // Stats globales
-  const stats = {
-    brouillon: DEVIS_DB.filter(d => d.status === 'brouillon').length,
-    envoye:    DEVIS_DB.filter(d => d.status === 'envoye').length,
-    accepte:   DEVIS_DB.filter(d => d.status === 'accepte').length,
-    montantEnAttente: DEVIS_DB
-      .filter(d => d.status === 'envoye')
-      .reduce((sum, d) => sum + computeDevisTotals(d).totalTTC, 0),
-    montantAccepte: DEVIS_DB
-      .filter(d => d.status === 'accepte')
-      .reduce((sum, d) => sum + computeDevisTotals(d).totalTTC, 0),
-  };
-
-  div.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-      <div>
-        <div style="font-size:18px;font-weight:800;">💼 Devis</div>
-        <div style="font-size:12px;color:var(--text3);">${totalCount} devis au total ${filtered.length !== totalCount ? `· ${filtered.length} affichés` : ''}</div>
-      </div>
-      <button class="btn-create-interv" onclick="startNewDevis()">＋ Nouveau devis</button>
-    </div>
-
-    <!-- Stats cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px;">
-      <div class="stat-card-mini" style="background:#dbeafe;color:#1e40af;">
-        <div style="font-size:24px;font-weight:800;">${stats.envoye}</div>
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">En attente</div>
-        <div style="font-size:13px;font-weight:700;margin-top:4px;">${fmtEur(stats.montantEnAttente)}</div>
-      </div>
-      <div class="stat-card-mini" style="background:#dcfce7;color:#15803d;">
-        <div style="font-size:24px;font-weight:800;">${stats.accepte}</div>
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Acceptés</div>
-        <div style="font-size:13px;font-weight:700;margin-top:4px;">${fmtEur(stats.montantAccepte)}</div>
-      </div>
-      <div class="stat-card-mini" style="background:#f3f4f6;color:#6b7280;">
-        <div style="font-size:24px;font-weight:800;">${stats.brouillon}</div>
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Brouillons</div>
-      </div>
-    </div>
-
-    <!-- Recherche + filtres -->
-    <div style="display:flex;gap:8px;margin-bottom:13px;">
-      <input type="search" placeholder="🔍 Rechercher par référence, client, objet..." value="${escapeHtml(devisFilters.search)}"
-        oninput="devisFilters.search=this.value;renderDevis(document.getElementById('content-area'))"
-        style="flex:1;padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#fff;" />
-    </div>
-    <div class="filter-row" style="margin-bottom:13px;">
-      <div class="ftab ${devisFilters.status==='tous'?'active':''}" onclick="devisFilters.status='tous';renderDevis(document.getElementById('content-area'))">Tous</div>
-      <div class="ftab ${devisFilters.status==='brouillon'?'active':''}" onclick="devisFilters.status='brouillon';renderDevis(document.getElementById('content-area'))">Brouillons</div>
-      <div class="ftab ${devisFilters.status==='envoye'?'active':''}" onclick="devisFilters.status='envoye';renderDevis(document.getElementById('content-area'))">Envoyés</div>
-      <div class="ftab ${devisFilters.status==='accepte'?'active':''}" onclick="devisFilters.status='accepte';renderDevis(document.getElementById('content-area'))">Acceptés</div>
-      <div class="ftab ${devisFilters.status==='refuse'?'active':''}" onclick="devisFilters.status='refuse';renderDevis(document.getElementById('content-area'))">Refusés</div>
-    </div>
-
-    ${filtered.length === 0
-      ? (totalCount === 0
-          ? emptyState({
-              icon: '💼',
-              title: 'Aucun devis pour le moment',
-              message: 'Créez votre premier devis pour proposer vos services à vos clients.',
-              actionLabel: '＋ Créer mon premier devis',
-              actionFn: 'startNewDevis()',
-            })
-          : emptyState({
-              icon: '🔍',
-              title: 'Aucun résultat',
-              message: 'Aucun devis ne correspond à vos critères.',
-              actionLabel: '↺ Réinitialiser les filtres',
-              actionFn: 'devisFilters={status:"tous",search:""};renderDevis(document.getElementById("content-area"))',
-            }))
-      : filtered.map(d => devisCardHTML(d)).join('')}
-  `;
-}
-
-function devisCardHTML(d) {
-  const totals = computeDevisTotals(d);
-  const status = DEVIS_STATUS[d.status] || DEVIS_STATUS.brouillon;
-  const dateStr = d.createdAt ? new Date(d.createdAt).toLocaleDateString('fr-FR', {day:'numeric', month:'short', year:'numeric'}) : '';
-  const validite = d.validityDays || 30;
-  return `
-    <div class="if-card devis-card" onclick="openDevis(${d.id})" style="cursor:pointer;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-            <span style="font-size:13px;font-weight:800;color:var(--blue);">${d.ref}</span>
-            <span class="status-badge" style="background:${status.bg};color:${status.color};padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;">${status.label}</span>
-          </div>
-          <div style="font-size:15px;font-weight:700;color:var(--text1);margin-bottom:2px;">${escapeHtml(d.client?.name || 'Client à définir')}</div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">${escapeHtml(d.objet || 'Objet non défini')}</div>
-          <div style="font-size:12px;color:var(--text3);">📅 ${dateStr} · ⏱ Valide ${validite}j · ${(d.lines||[]).length} ligne(s)</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0;">
-          <div style="font-size:11px;color:var(--text3);">Total TTC</div>
-          <div style="font-size:18px;font-weight:800;color:var(--text1);">${fmtEur(totals.totalTTC)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px;">HT : ${fmtEur(totals.totalHT)}</div>
-        </div>
-      </div>
-    </div>`;
-}
-
-// ══════════════════════════════════════════════════════
-// ➕ CRÉATION D'UN NOUVEAU DEVIS
-// ══════════════════════════════════════════════════════
-function startNewDevis() {
-  currentDevis = {
-    id: Date.now(),
-    ref: generateDevisRef(),
-    client: null,
-    clientId: null,
-    objet: '',
-    notes: '',
-    validityDays: 30,
-    status: 'brouillon',
-    lines: [
-      { id: 1, designation: '', qty: 1, unit: 'u', price: 0, tva: 20 },
-    ],
-    createdAt: Date.now(),
-    createdBy: currentUser.initials,
-    updatedAt: Date.now(),
-  };
-  navigateTo('nouveau-devis');
-}
-
-function openDevis(id) {
-  const d = DEVIS_DB.find(x => x.id === id);
-  if (!d) { showToast('⚠ Devis introuvable'); return; }
-  currentDevis = JSON.parse(JSON.stringify(d)); // copie modifiable
-  navigateTo('edit-devis');
-}
-
-function renderNouveauDevis(div) { renderDevisEditor(div, true); }
-function renderEditDevis(div) { renderDevisEditor(div, false); }
-
-function renderDevisEditor(div, isNew) {
-  if (!currentDevis) {
-    div.innerHTML = emptyState({
-      icon: '⚠',
-      title: 'Aucun devis en cours',
-      message: 'Créez un nouveau devis depuis la liste.',
-      actionLabel: '← Retour à la liste',
-      actionFn: 'navigateTo("devis")',
-    });
-    return;
-  }
-
-  const totals = computeDevisTotals(currentDevis);
-  const status = DEVIS_STATUS[currentDevis.status] || DEVIS_STATUS.brouillon;
-
-  div.innerHTML = `
-    <!-- Header devis -->
-    <div style="background:linear-gradient(135deg, #3a6fd8 0%, #2c5fc4 100%);color:#fff;padding:20px;border-radius:14px;margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
-        <div>
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:.85;font-weight:700;">${isNew ? 'Nouveau devis' : 'Édition du devis'}</div>
-          <div style="font-size:24px;font-weight:800;letter-spacing:-.5px;margin-top:3px;">${currentDevis.ref}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Total TTC</div>
-          <div style="font-size:28px;font-weight:800;letter-spacing:-.5px;">${fmtEur(totals.totalTTC)}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Bloc Client -->
-    <div class="card" style="padding:16px;margin-bottom:16px;">
-      <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">👤 Client</div>
-      ${currentDevis.client ? `
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-          <div>
-            <div style="font-size:16px;font-weight:700;">${escapeHtml(currentDevis.client.name)}</div>
-            ${currentDevis.client.address ? `<div style="font-size:13px;color:var(--text2);margin-top:2px;">📍 ${escapeHtml(currentDevis.client.address)}</div>` : ''}
-            ${currentDevis.client.phone ? `<div style="font-size:13px;color:var(--text2);margin-top:2px;">📞 ${escapeHtml(currentDevis.client.phone)}</div>` : ''}
-            ${currentDevis.client.email ? `<div style="font-size:13px;color:var(--text2);margin-top:2px;">✉️ ${escapeHtml(currentDevis.client.email)}</div>` : ''}
-          </div>
-          <button class="btn-icon-secondary" onclick="openDevisClientPicker()">✏️</button>
-        </div>` : `
-        <button onclick="openDevisClientPicker()" style="width:100%;padding:14px;background:var(--bg);border:2px dashed var(--border);border-radius:10px;color:var(--text2);cursor:pointer;font-size:14px;font-weight:600;">＋ Sélectionner un client</button>
-      `}
-    </div>
-
-    <!-- Bloc Objet + Validité -->
-    <div class="card" style="padding:16px;margin-bottom:16px;">
-      <div style="display:grid;grid-template-columns:1fr 140px;gap:12px;">
-        <div>
-          <label style="display:block;font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Objet du devis</label>
-          <input type="text" id="devis-objet" placeholder="Ex: Rénovation salle de bains" value="${escapeHtml(currentDevis.objet)}"
-            oninput="currentDevis.objet=this.value"
-            style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;" />
-        </div>
-        <div>
-          <label style="display:block;font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Validité (jours)</label>
-          <input type="number" min="1" max="365" id="devis-validity" value="${currentDevis.validityDays}"
-            oninput="currentDevis.validityDays=Number(this.value)"
-            style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Bloc Lignes -->
-    <div class="card" style="padding:16px;margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-        <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">📋 Lignes du devis</div>
-        <div style="display:flex;gap:6px;">
-          <button class="btn-icon-secondary" onclick="openCatalog()" title="Ajouter depuis le catalogue" style="padding:8px 12px;width:auto;font-size:12px;font-weight:700;">📚 Catalogue</button>
-          <button class="btn-icon-secondary" onclick="addDevisLine()" title="Ligne libre" style="padding:8px 12px;width:auto;font-size:12px;font-weight:700;">＋ Ligne</button>
-        </div>
-      </div>
-      <div id="devis-lines">
-        ${currentDevis.lines.map((line, i) => devisLineHTML(line, i)).join('')}
-      </div>
-    </div>
-
-    <!-- Bloc Notes -->
-    <div class="card" style="padding:16px;margin-bottom:16px;">
-      <label style="display:block;font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">📝 Notes / Conditions particulières</label>
-      <textarea id="devis-notes" placeholder="Ex: Acompte de 30% à la commande, solde à la livraison..." 
-        oninput="currentDevis.notes=this.value"
-        style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;min-height:70px;resize:vertical;font-family:inherit;">${escapeHtml(currentDevis.notes)}</textarea>
-    </div>
-
-    <!-- Bloc Totaux -->
-    <div class="card" style="padding:16px;margin-bottom:16px;background:#f9fafb;">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:14px;">
-        <span style="color:var(--text2);">Total HT</span>
-        <span style="font-weight:700;">${fmtEur(totals.totalHT)}</span>
-      </div>
-      ${Object.entries(totals.tvaParTaux).filter(([_,v]) => v > 0).map(([rate, amount]) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;color:var(--text2);">
-          <span>TVA ${rate}%</span>
-          <span>${fmtEur(amount)}</span>
-        </div>`).join('')}
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0 4px;border-top:1px solid var(--border);margin-top:6px;font-size:18px;">
-        <span style="font-weight:800;">Total TTC</span>
-        <span style="font-weight:800;color:var(--blue);">${fmtEur(totals.totalTTC)}</span>
-      </div>
-    </div>
-
-    <!-- Boutons d'action -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
-      <button onclick="saveDevisDraft()" class="btn-icon-secondary" style="flex:1;min-width:140px;padding:14px;font-weight:700;font-size:14px;width:auto;">💾 Enregistrer brouillon</button>
-      ${currentDevis.status === 'brouillon' ? `
-        <button onclick="markDevisAsSent()" class="btn-create-interv" style="flex:1;min-width:140px;background:#1e40af;">📧 Marquer comme envoyé</button>
-      ` : ''}
-      ${currentDevis.status === 'envoye' ? `
-        <button onclick="markDevisAsAccepted()" class="btn-create-interv" style="flex:1;min-width:140px;background:#15803d;">✓ Accepté par le client</button>
-        <button onclick="markDevisAsRefused()" class="btn-icon-secondary" style="flex:1;min-width:140px;padding:14px;background:#fee2e2;color:#991b1b;font-weight:700;width:auto;">✗ Refusé</button>
-      ` : ''}
-      ${!isNew ? `
-        <button onclick="duplicateDevis()" class="btn-icon-secondary" style="padding:14px 18px;font-weight:700;width:auto;" title="Dupliquer">📋</button>
-        <button onclick="confirmDeleteDevis()" class="btn-icon-secondary" style="padding:14px 18px;background:#fee2e2;color:#991b1b;font-weight:700;width:auto;" title="Supprimer">🗑</button>
-      ` : ''}
-    </div>
-  `;
-}
-
-function devisLineHTML(line, index) {
-  const total = (Number(line.qty) || 0) * (Number(line.price) || 0);
-  return `
-    <div class="devis-line" data-line-index="${index}" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;background:#fff;">
-      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start;margin-bottom:8px;">
-        <input type="text" placeholder="Désignation" value="${escapeHtml(line.designation)}"
-          oninput="currentDevis.lines[${index}].designation=this.value"
-          style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-weight:600;" />
-        <button onclick="removeDevisLine(${index})" style="width:32px;height:32px;border:none;background:#fee2e2;color:#991b1b;border-radius:6px;cursor:pointer;font-size:14px;" title="Supprimer cette ligne">🗑</button>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;">Quantité</label>
-          <input type="number" step="0.01" min="0" value="${line.qty}"
-            oninput="currentDevis.lines[${index}].qty=Number(this.value);refreshDevisLineTotal(${index})"
-            style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;" />
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;">Unité</label>
-          <select onchange="currentDevis.lines[${index}].unit=this.value"
-            style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff;">
-            ${['u','h','j','m','m²','m³','kg','t','forfait','jour','semaine'].map(u => `<option value="${u}" ${line.unit===u?'selected':''}>${u}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;">PU HT (€)</label>
-          <input type="number" step="0.01" min="0" value="${line.price}"
-            oninput="currentDevis.lines[${index}].price=Number(this.value);refreshDevisLineTotal(${index})"
-            style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;" />
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;">TVA</label>
-          <select onchange="currentDevis.lines[${index}].tva=Number(this.value);refreshDevisLineTotal(${index})"
-            style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff;">
-            ${TVA_RATES.map(r => `<option value="${r.value}" ${line.tva===r.value?'selected':''}>${r.value}%</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div style="text-align:right;margin-top:8px;font-size:13px;color:var(--text2);">
-        Total ligne HT : <strong id="line-total-${index}" style="color:var(--text1);">${fmtEur(total)}</strong>
-      </div>
-    </div>
-  `;
-}
-
-function refreshDevisLineTotal(index) {
-  const line = currentDevis.lines[index];
-  const total = (Number(line.qty) || 0) * (Number(line.price) || 0);
-  const el = document.getElementById(`line-total-${index}`);
-  if (el) el.textContent = fmtEur(total);
-  // Refresh global totals
-  refreshDevisTotals();
-}
-
-function refreshDevisTotals() {
-  // Re-rendu complet pour mettre à jour les totaux globaux
-  renderDevisEditor(document.getElementById('content-area'), currentPage === 'nouveau-devis');
-}
-
-function addDevisLine() {
-  const newId = currentDevis.lines.length + 1;
-  currentDevis.lines.push({ id: newId, designation: '', qty: 1, unit: 'u', price: 0, tva: 20 });
-  refreshDevisTotals();
-}
-
-function removeDevisLine(index) {
-  if (currentDevis.lines.length === 1) {
-    showToast('⚠ Un devis doit avoir au moins une ligne');
-    return;
-  }
-  currentDevis.lines.splice(index, 1);
-  refreshDevisTotals();
-}
-
-// ══════════════════════════════════════════════════════
-// 👤 SÉLECTION CLIENT POUR LE DEVIS
-// ══════════════════════════════════════════════════════
-function openDevisClientPicker() {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay open';
-  modal.id = 'devis-client-modal';
-  modal.innerHTML = `
-    <div class="modal-box" style="max-width:520px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <div style="font-size:17px;font-weight:800;">👤 Sélectionner un client</div>
-        <button onclick="document.getElementById('devis-client-modal').remove()" class="btn-icon-secondary" style="width:32px;height:32px;font-size:14px;">✕</button>
-      </div>
-      <input type="search" id="devis-client-search" placeholder="🔍 Rechercher un client..." 
-        oninput="renderDevisClientList(this.value)"
-        style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;margin-bottom:10px;" />
-      <div id="devis-client-list" style="max-height:50vh;overflow-y:auto;">
-        ${renderDevisClientListHTML('')}
-      </div>
-      <div style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <button onclick="selectNewClientForDevis()" class="btn-create-interv" style="flex:1;">＋ Nouveau client</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-}
-
-function renderDevisClientList(query) {
-  const el = document.getElementById('devis-client-list');
-  if (el) el.innerHTML = renderDevisClientListHTML(query);
-}
-
-function renderDevisClientListHTML(query) {
-  const q = (query || '').toLowerCase();
-  const filtered = (CLIENTS_DB || []).filter(c =>
-    !q || (c.name||'').toLowerCase().includes(q) || (c.address||'').toLowerCase().includes(q)
-  );
-  if (filtered.length === 0) {
-    return `<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;">${(CLIENTS_DB||[]).length === 0 ? 'Aucun client enregistré.' : 'Aucun résultat.'}</div>`;
-  }
-  return filtered.map(c => `
-    <div onclick="selectClientForDevis(${c.id})" style="padding:10px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background .15s;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
-      <div style="width:36px;height:36px;border-radius:50%;background:#3a6fd8;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">${(c.name||'?').substring(0,2).toUpperCase()}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:700;font-size:14px;">${escapeHtml(c.name)}</div>
-        <div style="font-size:12px;color:var(--text3);">${escapeHtml(c.address || c.phone || '')}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function selectClientForDevis(clientId) {
-  const c = CLIENTS_DB.find(x => x.id === clientId);
-  if (c) {
-    currentDevis.client = { name: c.name, address: c.address, phone: c.phone, email: c.email };
-    currentDevis.clientId = c.id;
-    document.getElementById('devis-client-modal')?.remove();
-    refreshDevisTotals();
-  }
-}
-
-function selectNewClientForDevis() {
-  const name = prompt('Nom du nouveau client :');
-  if (!name) return;
-  currentDevis.client = { name, address: '', phone: '', email: '' };
-  currentDevis.clientId = null;
-  document.getElementById('devis-client-modal')?.remove();
-  showToast('✅ Client temporaire ajouté (à enregistrer ensuite dans la base)');
-  refreshDevisTotals();
-}
-
-// ══════════════════════════════════════════════════════
-// 📚 CATALOGUE D'ARTICLES
-// ══════════════════════════════════════════════════════
-function openCatalog() {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay open';
-  modal.id = 'catalog-modal';
-  modal.innerHTML = `
-    <div class="modal-box" style="max-width:600px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <div style="font-size:17px;font-weight:800;">📚 Catalogue d'articles</div>
-        <button onclick="document.getElementById('catalog-modal').remove()" class="btn-icon-secondary" style="width:32px;height:32px;font-size:14px;">✕</button>
-      </div>
-      <input type="search" id="catalog-search" placeholder="🔍 Rechercher un article..." 
-        oninput="renderCatalogList(this.value)"
-        style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;margin-bottom:10px;" />
-      <div id="catalog-list" style="max-height:50vh;overflow-y:auto;">
-        ${renderCatalogListHTML('')}
-      </div>
-      <div style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <button onclick="addNewCatalogItem()" class="btn-create-interv" style="flex:1;">＋ Nouvel article au catalogue</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-}
-
-function renderCatalogList(query) {
-  const el = document.getElementById('catalog-list');
-  if (el) el.innerHTML = renderCatalogListHTML(query);
-}
-
-function renderCatalogListHTML(query) {
-  const q = (query || '').toLowerCase();
-  const filtered = DEVIS_CATALOG.filter(a =>
-    !q || (a.designation||'').toLowerCase().includes(q) || (a.category||'').toLowerCase().includes(q)
-  );
-  if (filtered.length === 0) {
-    return `<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;">Aucun article. Cliquez sur "Nouvel article" pour enrichir le catalogue.</div>`;
-  }
-  // Groupé par catégorie
-  const byCat = {};
-  filtered.forEach(a => {
-    const cat = a.category || 'Autres';
-    if (!byCat[cat]) byCat[cat] = [];
-    byCat[cat].push(a);
-  });
-  return Object.entries(byCat).map(([cat, items]) => `
-    <div style="margin-bottom:12px;">
-      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 12px;">${cat}</div>
-      ${items.map(a => `
-        <div onclick="addCatalogItemToDevis(${a.id})" style="padding:10px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background .15s;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:14px;">${escapeHtml(a.designation)}</div>
-            <div style="font-size:12px;color:var(--text3);">${fmtEur(a.price)} / ${a.unit} · TVA ${a.tva}%</div>
-          </div>
-          <div style="font-size:18px;color:var(--blue);font-weight:700;">＋</div>
-        </div>
-      `).join('')}
-    </div>
-  `).join('');
-}
-
-function addCatalogItemToDevis(itemId) {
-  const item = DEVIS_CATALOG.find(a => a.id === itemId);
-  if (!item) return;
-  currentDevis.lines.push({
-    id: currentDevis.lines.length + 1,
-    designation: item.designation,
-    qty: 1,
-    unit: item.unit,
-    price: item.price,
-    tva: item.tva,
-  });
-  document.getElementById('catalog-modal')?.remove();
-  showToast(`✅ "${item.designation}" ajouté`);
-  refreshDevisTotals();
-}
-
-function addNewCatalogItem() {
-  const designation = prompt('Désignation de l\'article :');
-  if (!designation) return;
-  const priceStr = prompt('Prix unitaire HT (€) :');
-  const price = Number(priceStr);
-  if (isNaN(price)) { showToast('⚠ Prix invalide'); return; }
-  const unitStr = prompt('Unité (u, h, m, m², kg, forfait, etc.) :', 'u');
-  const tvaStr = prompt('TVA (%) - choix : 0, 2.1, 5.5, 10, 20 :', '20');
-  const tva = Number(tvaStr);
-  const category = prompt('Catégorie (ex: Plomberie, Main d\'œuvre, Matériel...) :', 'Divers');
-  DEVIS_CATALOG.push({
-    id: nextCatalogId++,
-    designation,
-    unit: unitStr || 'u',
-    price,
-    tva: isNaN(tva) ? 20 : tva,
-    category: category || 'Divers',
-  });
-  showToast('✅ Article ajouté au catalogue');
-  renderCatalogList(document.getElementById('catalog-search')?.value || '');
-}
-
-// ══════════════════════════════════════════════════════
-// 💾 SAUVEGARDE / ACTIONS
-// ══════════════════════════════════════════════════════
-function saveDevisDraft() {
-  if (!currentDevis.client) {
-    showToast('⚠ Sélectionnez un client');
-    return;
-  }
-  if (!currentDevis.objet || currentDevis.objet.trim().length < 3) {
-    showToast('⚠ Renseignez l\'objet du devis');
-    return;
-  }
-  // Valider qu'au moins une ligne a un contenu
-  const validLines = currentDevis.lines.filter(l => (l.designation || '').trim().length > 0 && Number(l.qty) > 0);
-  if (validLines.length === 0) {
-    showToast('⚠ Ajoutez au moins une ligne avec une désignation');
-    return;
-  }
-
-  currentDevis.updatedAt = Date.now();
-
-  // Insérer ou mettre à jour
-  const existingIdx = DEVIS_DB.findIndex(d => d.id === currentDevis.id);
-  if (existingIdx >= 0) {
-    DEVIS_DB[existingIdx] = JSON.parse(JSON.stringify(currentDevis));
-  } else {
-    DEVIS_DB.unshift(JSON.parse(JSON.stringify(currentDevis)));
-  }
-
-  DataStore.save();
-  showToast('💾 Devis enregistré');
-  setTimeout(() => navigateTo('devis'), 600);
-}
-
-function markDevisAsSent() {
-  confirmAction({
-    title: 'Marquer comme envoyé ?',
-    message: `Le devis ${currentDevis.ref} sera marqué comme envoyé au client. Vous pourrez ensuite suivre son acceptation.`,
-    confirmText: '📧 Marquer envoyé',
-    onConfirm: () => {
-      currentDevis.status = 'envoye';
-      currentDevis.sentAt = Date.now();
-      saveDevisDraft();
-    }
-  });
-}
-
-function markDevisAsAccepted() {
-  confirmAction({
-    title: 'Devis accepté par le client ?',
-    message: `Le devis ${currentDevis.ref} sera marqué comme accepté.\n\nVoulez-vous également créer automatiquement le chantier correspondant ?`,
-    confirmText: '✓ Accepté + Créer chantier',
-    cancelText: 'Juste marquer accepté',
-    onConfirm: () => {
-      currentDevis.status = 'accepte';
-      currentDevis.acceptedAt = Date.now();
-      // Création auto du chantier (basique)
-      if (currentDevis.client) {
-        const newChantier = {
-          id: (typeof nextChantierId !== 'undefined' ? nextChantierId++ : Date.now()),
-          ref: 'IN' + String((typeof nextChantierId !== 'undefined' ? nextChantierId-1 : 100)).padStart(5,'0'),
-          client: currentDevis.client.name,
-          clientId: currentDevis.clientId,
-          travaux: currentDevis.objet,
-          addr: currentDevis.client.address || '',
-          date: 'À planifier',
-          heure: '08h00',
-          pct: 0,
-          status: 'Planifié',
-          type: 'planifie',
-          equipe: [],
-          description: 'Issu du devis ' + currentDevis.ref,
-          devisId: currentDevis.id,
-          devisRef: currentDevis.ref,
-        };
-        CHANTIERS.unshift(newChantier);
-        showToast(`✅ Devis accepté · Chantier ${newChantier.ref} créé`);
-      } else {
-        showToast('✅ Devis marqué accepté');
-      }
-      saveDevisDraft();
-    }
-  });
-}
-
-function markDevisAsRefused() {
-  confirmAction({
-    title: 'Marquer comme refusé ?',
-    message: `Le devis ${currentDevis.ref} sera marqué comme refusé par le client.`,
-    confirmText: '✗ Marquer refusé',
-    danger: true,
-    onConfirm: () => {
-      currentDevis.status = 'refuse';
-      currentDevis.refusedAt = Date.now();
-      saveDevisDraft();
-    }
-  });
-}
-
-function duplicateDevis() {
-  const copy = JSON.parse(JSON.stringify(currentDevis));
-  copy.id = Date.now();
-  copy.ref = generateDevisRef();
-  copy.status = 'brouillon';
-  copy.createdAt = Date.now();
-  copy.updatedAt = Date.now();
-  delete copy.sentAt;
-  delete copy.acceptedAt;
-  delete copy.refusedAt;
-  currentDevis = copy;
-  showToast('📋 Devis dupliqué');
-  navigateTo('nouveau-devis');
-}
-
-function confirmDeleteDevis() {
-  confirmAction({
-    title: 'Supprimer ce devis ?',
-    message: `Le devis ${currentDevis.ref} sera définitivement supprimé. Cette action est irréversible.`,
-    confirmText: '🗑 Supprimer',
-    danger: true,
-    onConfirm: () => {
-      DEVIS_DB = DEVIS_DB.filter(d => d.id !== currentDevis.id);
-      DataStore.save();
-      showToast('🗑 Devis supprimé');
-      navigateTo('devis');
-    }
-  });
-}
-
 
 function renderDonnees(div) {
   const canManage = currentUser.role === 'gerant';
@@ -8142,11 +7482,17 @@ function saveSig(type) {
 function cardHTML(c) {
   const bc=c.type==='retard'?'badge-red':c.type==='finition'?'badge-orange':c.type==='termine'?'badge-green':c.type==='planifie'?'badge-gray':'badge-blue';
   const dc=c.type==='retard'?'red':c.type==='finition'?'orange':c.type==='termine'?'green':c.type==='planifie'?'gray':'';
+  // 💰 Badge devis Interfast
+  const hasDevis = c.devisInterfast && (c.devisInterfast.numero || c.devisInterfast.pdfFile);
+  const devisBadge = hasDevis
+    ? `<span class="devis-badge devis-ok" title="Devis Interfast joint">💰 Devis joint</span>`
+    : `<span class="devis-badge devis-missing" title="Aucun devis Interfast renseigné">⚠️ Devis manquant</span>`;
   return `<div class="if-card"><div class="if-card-inner">
     <div class="if-card-meta"><span class="if-card-type">${c.travaux.split('—')[0].trim()}</span><div class="if-card-time"><div class="time-dot ${dc}"></div>${c.date}</div></div>
     <div class="if-card-name">${c.client}</div>
     <div class="if-card-ref">${c.ref} · ${c.travaux}</div>
     <div class="if-card-addr"><span>📍</span><span>${c.addr}</span></div>
+    <div style="margin-top:8px;">${devisBadge}</div>
     <div class="if-card-footer" style="margin-top:12px;"><div class="av-group">${c.equipe.map(e=>`<span class="av-chip">${e}</span>`).join('')}</div><span class="badge ${bc}">${c.status}</span></div>
   </div></div>`;
 }
@@ -8184,6 +7530,35 @@ function openDetail(c) {
     descSection.style.display = '';
   } else {
     descSection.style.display = 'none';
+  }
+
+  // ── 💰 Devis Interfast ──
+  const devisSection = document.getElementById('dp-devis-section');
+  const devisContent = document.getElementById('dp-devis-content');
+  const d = c.devisInterfast;
+  if (d && (d.numero || d.pdfFile || d.montantTTC)) {
+    devisSection.style.display = '';
+    const dateFR = d.date ? new Date(d.date).toLocaleDateString('fr-FR') : '—';
+    const montant = d.montantTTC ? Number(d.montantTTC).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €' : '—';
+    devisContent.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-bottom:8px;">
+        <div><div style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">N° devis</div><div style="font-weight:700;">${escapeHtml(d.numero||'—')}</div></div>
+        <div><div style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Date</div><div style="font-weight:700;">${dateFR}</div></div>
+        <div style="grid-column:1/-1;"><div style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Montant TTC</div><div style="font-size:18px;font-weight:800;color:var(--blue);">${montant}</div></div>
+      </div>
+      ${d.pdfFile ? `
+        <a href="${d.pdfFile.dataUrl}" download="${escapeHtml(d.pdfFile.name)}" target="_blank" rel="noopener" class="dp-pdf-link" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text1);font-size:13px;">
+          <span style="font-size:18px;">📄</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(d.pdfFile.name)}</div>
+            <div style="font-size:11px;color:var(--text3);">Cliquer pour ouvrir/télécharger</div>
+          </div>
+          <span style="font-size:14px;">↗</span>
+        </a>
+      ` : `<div style="font-size:12px;color:var(--text3);font-style:italic;padding:8px;background:var(--bg);border-radius:6px;">📎 Aucun PDF joint</div>`}
+    `;
+  } else {
+    devisSection.style.display = 'none';
   }
 
   // ── Documents PDF ──
