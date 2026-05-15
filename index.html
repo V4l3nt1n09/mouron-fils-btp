@@ -730,6 +730,26 @@ button:active, .btn:active {
   color:#92400e;
 }
 
+/* 📎 Page Documents Interfast */
+.doc-stat-card{
+  padding:14px 16px;
+  border-radius:12px;
+  text-align:left;
+  transition:all .2s;
+}
+.doc-stat-card:hover{
+  transform:translateY(-1px);
+  box-shadow:0 6px 16px rgba(0,0,0,.08);
+}
+.document-row:hover{
+  transform:translateY(-1px);
+  box-shadow:0 6px 16px rgba(58,111,216,.1);
+  border-color:var(--blue) !important;
+}
+.document-row:active{
+  transform:scale(.99);
+}
+
 /* ══════════════════════════════════════════════════════
    🔍 RECHERCHE GLOBALE (modal overlay)
    ══════════════════════════════════════════════════════ */
@@ -3759,7 +3779,7 @@ const NAV_ITEMS = {
   rapports:          { icon:'📝', label:'Rapports',           section:'Terrain',   badge:'3' },
   utilisateurs:      { icon:'👤', label:'Utilisateurs',       section:'Administration', badge:'!' },
   equipes:           { icon:'👷', label:'Équipes',            section:'Gestion' },
-  documents:         { icon:'📄', label:'Dev. / Fac.',        section:'Gestion' },
+  documents:         { icon:'📎', label:'Documents',          section:'Gestion' },
   stocks:            { icon:'📦', label:'Stocks',             section:'Gestion' },
   heures:            { icon:'⏱',  label:'Heures',            section:'Gestion' },
   'heures-personnel':{ icon:'⏱',  label:'Heures personnel',  section:'Comptabilité' },
@@ -3797,7 +3817,7 @@ function buildNav(role, cfg) {
 
 const PAGE_TITLES = {
   dashboard:'Planning', calendrier:'Calendrier', chantiers:'Chantiers', clients:'Clients',
-  utilisateurs:'Utilisateurs', equipes:'Équipes', documents:'Dev. / Fac.', stocks:'Stocks',
+  utilisateurs:'Utilisateurs', equipes:'Équipes', documents:'Documents Interfast', stocks:'Stocks',
   heures:'Heures', 'heures-personnel':'Heures Personnel', 'mon-planning':'Mon Planning', 'mes-chantiers':'Mes Chantiers',
   rapports:'Rapports d\'intervention', 'mes-rapports':'Mes Rapports', 'nouveau-rapport':'Nouveau rapport',
   'mes-horaires':'Feuilles d\'heures', 'saisie-jour':'Saisie d\'une journée',
@@ -3989,6 +4009,7 @@ function renderPage(id) {
     case 'conversation':      renderConversation(div); break;
     case 'donnees':           renderDonnees(div); break;
     case 'equipes':           renderEquipes(div); break;
+    case 'documents':         renderDocuments(div); break;
     default:
       div.innerHTML = `<div class="empty-state"><div class="emoji">🚧</div><h3>${PAGE_TITLES[id]||id}</h3><p>Module en cours de développement</p></div>`;
   }
@@ -6370,6 +6391,175 @@ function createConversationAndOpen() {
 // ══════════════════════════════════════════════════════
 // 💾 SAUVEGARDE — Page de gestion des données
 // ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// 📎 PAGE DOCUMENTS INTERFAST (devis + factures liés aux chantiers)
+// ══════════════════════════════════════════════════════════════════════════
+let documentsFilters = {
+  tab: 'devis',     // 'devis' | 'factures'
+  search: '',
+};
+
+function renderDocuments(div) {
+  // Accès réservé à : Gérant, Chargé d'affaires, Comptable, Secrétaire
+  const canView = ['gerant','charge','comptable','secretaire'].includes(currentUser.role);
+  if (!canView) {
+    div.innerHTML = emptyState({
+      icon: '🔒',
+      title: 'Accès restreint',
+      message: 'Cette page est réservée aux gérants, chargés d\'affaires, comptables et secrétaires.',
+    });
+    return;
+  }
+
+  // Extraire tous les devis liés aux chantiers
+  const allDevis = [];
+  (CHANTIERS || []).forEach(c => {
+    const d = c.devisInterfast;
+    if (d && (d.numero || d.pdfFile || d.montantTTC)) {
+      allDevis.push({
+        chantierId: c.id,
+        chantierRef: c.ref,
+        chantierStatus: c.status,
+        chantierType: c.type,
+        client: c.client,
+        travaux: c.travaux,
+        numero: d.numero || '(Sans n°)',
+        date: d.date || '',
+        montantTTC: d.montantTTC || 0,
+        pdfFile: d.pdfFile,
+      });
+    }
+  });
+
+  // Stats globales
+  const stats = {
+    nbDevis: allDevis.length,
+    nbAvecPdf: allDevis.filter(d => d.pdfFile).length,
+    totalTTC: allDevis.reduce((sum, d) => sum + (Number(d.montantTTC) || 0), 0),
+    chantiersSansDevis: (CHANTIERS || []).filter(c => !c.devisInterfast || (!c.devisInterfast.numero && !c.devisInterfast.pdfFile)).length,
+  };
+
+  // Filtre recherche
+  const q = (documentsFilters.search || '').toLowerCase().trim();
+  const filteredDevis = q
+    ? allDevis.filter(d =>
+        (d.numero||'').toLowerCase().includes(q) ||
+        (d.client||'').toLowerCase().includes(q) ||
+        (d.travaux||'').toLowerCase().includes(q) ||
+        (d.chantierRef||'').toLowerCase().includes(q)
+      )
+    : allDevis;
+
+  // Tri par date du devis décroissante (plus récent en premier)
+  filteredDevis.sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return b.date.localeCompare(a.date);
+  });
+
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">📎 Documents Interfast</div>
+        <div style="font-size:12px;color:var(--text3);">Devis et factures liés aux chantiers</div>
+      </div>
+    </div>
+
+    <!-- Stats globales -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">
+      <div class="doc-stat-card" style="background:#dbeafe;color:#1e40af;">
+        <div style="font-size:24px;font-weight:800;">${stats.nbDevis}</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Devis liés</div>
+        <div style="font-size:11px;opacity:.8;margin-top:2px;">${stats.nbAvecPdf} avec PDF</div>
+      </div>
+      <div class="doc-stat-card" style="background:#dcfce7;color:#15803d;">
+        <div style="font-size:18px;font-weight:800;">${stats.totalTTC.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})} €</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Total TTC</div>
+        <div style="font-size:11px;opacity:.8;margin-top:2px;">cumul des devis</div>
+      </div>
+      <div class="doc-stat-card" style="background:#fef3c7;color:#92400e;">
+        <div style="font-size:24px;font-weight:800;">${stats.chantiersSansDevis}</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Sans devis</div>
+        <div style="font-size:11px;opacity:.8;margin-top:2px;">à régulariser</div>
+      </div>
+    </div>
+
+    <!-- Tabs Devis / Factures -->
+    <div class="filter-row" style="margin-bottom:13px;">
+      <div class="ftab ${documentsFilters.tab==='devis'?'active':''}" onclick="documentsFilters.tab='devis';renderDocuments(document.getElementById('content-area'))">💰 Devis (${stats.nbDevis})</div>
+      <div class="ftab" style="opacity:.5;cursor:not-allowed;" title="Module Factures à venir">📄 Factures (à venir)</div>
+    </div>
+
+    ${documentsFilters.tab === 'devis' ? `
+      <!-- Recherche -->
+      <div style="margin-bottom:13px;">
+        <input type="search" placeholder="🔍 Rechercher par n° devis, client, chantier..." value="${escapeHtml(documentsFilters.search)}"
+          oninput="documentsFilters.search=this.value;renderDocuments(document.getElementById('content-area'))"
+          style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#fff;" />
+      </div>
+
+      <!-- Liste -->
+      ${filteredDevis.length === 0
+        ? (allDevis.length === 0
+            ? emptyState({
+                icon: '📎',
+                title: 'Aucun devis pour le moment',
+                message: 'Les devis Interfast s\'ajoutent automatiquement ici dès que vous les renseignez à la création d\'un chantier.',
+                actionLabel: '＋ Créer une intervention',
+                actionFn: 'startNewIntervention()',
+              })
+            : emptyState({
+                icon: '🔍',
+                title: 'Aucun résultat',
+                message: 'Aucun devis ne correspond à votre recherche.',
+              }))
+        : filteredDevis.map(d => documentRowHTML(d)).join('')}
+    ` : `
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:40px 20px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:14px;">🚧</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px;">Module Factures en préparation</div>
+        <div style="font-size:13px;color:var(--text3);max-width:420px;margin:0 auto;line-height:1.5;">
+          Cette section permettra prochainement de centraliser et suivre les factures Interfast émises pour chaque chantier (statut, paiement, relances...).
+        </div>
+      </div>
+    `}
+  `;
+}
+
+function documentRowHTML(d) {
+  const dateFR = d.date ? new Date(d.date).toLocaleDateString('fr-FR', {day:'numeric', month:'short', year:'numeric'}) : '—';
+  const montant = Number(d.montantTTC || 0).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+  return `
+    <div class="document-row" onclick="openChantierByIdFromDocuments(${d.chantierId})" style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px;cursor:pointer;transition:all .2s;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+            <span style="font-size:13px;font-weight:800;color:var(--blue);">${escapeHtml(d.numero)}</span>
+            ${d.pdfFile ? '<span style="font-size:11px;padding:2px 7px;background:#dcfce7;color:#15803d;border-radius:8px;font-weight:700;">📎 PDF</span>' : '<span style="font-size:11px;padding:2px 7px;background:#fef3c7;color:#92400e;border-radius:8px;font-weight:700;">⚠ sans PDF</span>'}
+          </div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px;">${escapeHtml(d.client||'—')}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">${escapeHtml(d.travaux||'')}</div>
+          <div style="font-size:12px;color:var(--text3);">🏗 ${d.chantierRef} · 📅 ${dateFR}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:11px;color:var(--text3);">Montant TTC</div>
+          <div style="font-size:18px;font-weight:800;color:var(--text1);">${montant}</div>
+          ${d.pdfFile ? `<a href="${d.pdfFile.dataUrl}" download="${escapeHtml(d.pdfFile.name)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="display:inline-block;margin-top:6px;font-size:11px;color:var(--blue);text-decoration:none;">📄 Ouvrir PDF</a>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function openChantierByIdFromDocuments(chantierId) {
+  const c = (CHANTIERS||[]).find(x => x.id === chantierId);
+  if (c) {
+    navigateTo('chantiers');
+    setTimeout(() => openDetail(c), 100);
+  }
+}
 
 function renderDonnees(div) {
   const canManage = currentUser.role === 'gerant';
