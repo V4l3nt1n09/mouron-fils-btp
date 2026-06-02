@@ -8494,16 +8494,6 @@ window.addEventListener('load', ()=>{
     document.body.appendChild(installBtn);
   });
 });
-</script>
-<!-- Enregistrement du Service Worker (PWA) -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('sw.js')
-            .then(() => console.log('Service Worker enregistré ✅'))
-            .catch((err) => console.log('Échec Service Worker :', err));
-        });
-      }
-    </script>  
+</script>  
 </body>
 </html>
