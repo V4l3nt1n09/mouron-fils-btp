@@ -27,7 +27,7 @@ Application web de gestion pour la **SARL Mouron & Fils**, entreprise familiale 
 
 ## 📅 Version
 
-**v0.1.0** — Mai 2026 (alpha)
+**v0.2.0** — Mai 2026 (alpha)
 
 ## 🌐 Démo en ligne
 
