@@ -3531,9 +3531,11 @@ async function doLogin() {
 
 function doLogout() {
   currentUser = null;
+  localStorage.removeItem('mf_session');
+  sbApi.headers['Authorization'] = 'Bearer ' + sbApi.key;   // retour à la clé anon
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app-shell').classList.remove('visible');
-  document.getElementById('login-user').value = '';
+  document.getElementById('login-email').value = '';
   document.getElementById('login-pwd').value = '';
 }
 
