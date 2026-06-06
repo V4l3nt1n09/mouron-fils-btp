@@ -3510,11 +3510,25 @@ async function doLogin() {
   localStorage.setItem('mf_session', JSON.stringify(session));
   sbApi.headers['Authorization'] = 'Bearer ' + session.access_token;
 
-  // 3) Retrouver le profil via l'email (lien team_members)
-  const rows = await sbApi.get('team_members', { select: 'initials', filters: { email: 'eq.' + email } });
-  const initials = rows[0] && rows[0].initials;
-  if (!initials || !USERS_DB[initials]) { showToast('⚠ Profil introuvable pour cet email'); return; }
-  currentUser = USERS_DB[initials];
+  // 3) Retrouver le profil dans team_members (lien par email) + construire currentUser
+  const rows = await sbApi.get('team_members', {
+    select: 'initials,full_name,role_key,email,phone,status,is_admin',
+    filters: { email: 'eq.' + email }
+  });
+  const u = rows[0];
+  if (!u) { showToast('⚠ Profil introuvable pour cet email'); return; }
+
+  const roleMap = { charge_affaire: 'charge', chef_equipe: 'chef-equipe' };
+  currentUser = {
+    name: u.full_name,
+    initials: u.initials,
+    role: roleMap[u.role_key] || u.role_key,
+    email: u.email,
+    tel: u.phone,
+    status: u.status || 'active',
+    assignedTo: u.initials,
+    is_admin: u.is_admin
+  };
 
   // 4) Afficher l'app (inchangé)
   document.getElementById('login-screen').style.display = 'none';
