@@ -3487,26 +3487,45 @@ let modalAction = null;
 // LOGIN / LOGOUT
 // ══════════════════════════════════════════════════════
 async function doLogin() {
-  const sel = document.getElementById('login-user').value;
-  const pwd = document.getElementById('login-pwd').value;
-  if (!sel) { showToast('⚠ Sélectionnez un utilisateur'); return; }
-  if (!pwd) { showToast('⚠ Entrez votre mot de passe');   return; }
-  currentUser = USERS_DB[sel];
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const pwd   = document.getElementById('login-pwd').value;
+  if (!email) { showToast('⚠ Entrez votre email'); return; }
+  if (!pwd)   { showToast('⚠ Entrez votre mot de passe'); return; }
+
+  // 1) Authentification réelle auprès de Supabase
+  let session;
+  try {
+    const res = await fetch(`${sbApi.url}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'apikey': sbApi.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pwd })
+    });
+    if (!res.ok) { showToast('⚠ Email ou mot de passe incorrect'); return; }
+    session = await res.json();
+  } catch (e) {
+    showToast('⚠ Connexion impossible'); return;
+  }
+
+  // 2) Mémoriser la session + utiliser le JWT pour toutes les requêtes (active la RLS)
+  localStorage.setItem('mf_session', JSON.stringify(session));
+  sbApi.headers['Authorization'] = 'Bearer ' + session.access_token;
+
+  // 3) Retrouver le profil via l'email (lien team_members)
+  const rows = await sbApi.get('team_members', { select: 'initials', filters: { email: 'eq.' + email } });
+  const initials = rows[0] && rows[0].initials;
+  if (!initials || !USERS_DB[initials]) { showToast('⚠ Profil introuvable pour cet email'); return; }
+  currentUser = USERS_DB[initials];
+
+  // 4) Afficher l'app (inchangé)
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-shell').classList.add('visible');
 
-  // ── Charger les données depuis Supabase ──
   if (CloudStore.isReady) {
-    showToast('☁️ Chargement de vos données...');
+    showToast('☁ Chargement de vos données...');
     const ok = await CloudStore.loadAll();
-    if (ok) {
-      console.log('✅ Connexion Supabase réussie');
-    } else {
-      console.warn('⚠ Mode hors-ligne — utilisation des données locales');
-      showToast('⚠ Connexion serveur impossible — mode hors-ligne');
-    }
+    if (ok) console.log('✅ Connexion Supabase réussie');
+    else { console.warn('⚠ Mode hors-ligne'); showToast('⚠ Connexion serveur impossible — mode hors-ligne'); }
   }
-
   buildApp();
 }
 
