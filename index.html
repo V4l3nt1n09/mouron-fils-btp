@@ -3486,7 +3486,47 @@ let modalAction = null;
 // ══════════════════════════════════════════════════════
 // LOGIN / LOGOUT
 // ══════════════════════════════════════════════════════
-  // Applique une session déjà obtenue : JWT + profil + affichage de l'app.
+  // Mapping clé machine (Supabase) -> rôle front (avec tiret) utilisé dans l'app
+function roleKeyToFront(rk) {
+  return ({ charge_affaire: 'charge', chef_equipe: 'chef-equipe' })[rk] || rk;
+}
+
+// Charge tous les membres depuis Supabase et reconstruit USERS_DB / EQUIPE_MAP / TEAM_FULL
+// (même forme qu'avant, mais avec les vraies données). En cas d'échec, on garde l'existant (secours).
+async function loadTeamFromDB() {
+  const rows = await sbApi.get('team_members', {
+    select: 'initials,first_name,last_name,full_name,role,role_key,bg_color,email,phone,address,birth_date,contract_type,contract_start,work_hours,skills,habilitations,status'
+  });
+  if (!rows || !rows.length) return; // échec ou aucune donnée -> on conserve les données existantes
+
+  // Vider les 3 objets sans casser les références const
+  [USERS_DB, EQUIPE_MAP, TEAM_FULL].forEach(obj => Object.keys(obj).forEach(k => delete obj[k]));
+
+  rows.forEach(u => {
+    const front = roleKeyToFront(u.role_key);
+    const terrain = ['chef-equipe', 'depanneur', 'ouvrier'].includes(front);
+
+    USERS_DB[u.initials] = {
+      name: u.full_name, initials: u.initials, role: front,
+      email: u.email, tel: u.phone, status: u.status || 'active',
+      ...(terrain ? { assignedTo: u.initials } : {})
+    };
+
+    EQUIPE_MAP[u.initials] = { n: u.full_name, role: u.role, bg: u.bg_color || '#555' };
+
+    TEAM_FULL[u.initials] = {
+      initials: u.initials, firstName: u.first_name, lastName: u.last_name || '', fullName: u.full_name,
+      role: u.role, roleKey: front, bg: u.bg_color || '#555',
+      email: u.email, phone: u.phone || '', address: u.address || '',
+      birthDate: u.birth_date, contractType: u.contract_type || '', contractStart: u.contract_start,
+      workHours: u.work_hours || '', skills: u.skills || [], habilitations: u.habilitations || [],
+      status: u.status || 'active', startDate: u.contract_start
+    };
+  });
+  console.log('✅ Équipe chargée depuis Supabase :', rows.length, 'membres');
+}
+
+// Applique une session déjà obtenue : JWT + profil + affichage de l'app.
 // Utilisée par doLogin() ET par la restauration au démarrage.
 async function applySession(session) {
   // Mémoriser la session + utiliser le JWT pour toutes les requêtes (active la RLS)
@@ -3523,6 +3563,7 @@ async function applySession(session) {
     if (ok) console.log('✅ Connexion Supabase réussie');
     else { console.warn('⚠ Mode hors-ligne'); showToast('⚠ Connexion serveur impossible — mode hors-ligne'); }
   }
+  await loadTeamFromDB();
   buildApp();
   return true;
 }
