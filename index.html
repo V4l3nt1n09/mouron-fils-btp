@@ -3546,41 +3546,8 @@ async function doLogin() {
     showToast('⚠ Connexion impossible'); return;
   }
 
-  // 2) Mémoriser la session + utiliser le JWT pour toutes les requêtes (active la RLS)
-  localStorage.setItem('mf_session', JSON.stringify(session));
-  sbApi.headers['Authorization'] = 'Bearer ' + session.access_token;
-
-  // 3) Retrouver le profil dans team_members (lien par email) + construire currentUser
-  const rows = await sbApi.get('team_members', {
-    select: 'initials,full_name,role_key,email,phone,status,is_admin',
-    filters: { email: 'eq.' + email }
-  });
-  const u = rows[0];
-  if (!u) { showToast('⚠ Profil introuvable pour cet email'); return; }
-
-  const roleMap = { charge_affaire: 'charge', chef_equipe: 'chef-equipe' };
-  currentUser = {
-    name: u.full_name,
-    initials: u.initials,
-    role: roleMap[u.role_key] || u.role_key,
-    email: u.email,
-    tel: u.phone,
-    status: u.status || 'active',
-    assignedTo: u.initials,
-    is_admin: u.is_admin
-  };
-
-  // 4) Afficher l'app (inchangé)
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-shell').classList.add('visible');
-
-  if (CloudStore.isReady) {
-    showToast('☁ Chargement de vos données...');
-    const ok = await CloudStore.loadAll();
-    if (ok) console.log('✅ Connexion Supabase réussie');
-    else { console.warn('⚠ Mode hors-ligne'); showToast('⚠ Connexion serveur impossible — mode hors-ligne'); }
-  }
-  buildApp();
+  // 2) Le reste est désormais géré par applySession()
+  await applySession(session);
 }
 
 function doLogout() {
