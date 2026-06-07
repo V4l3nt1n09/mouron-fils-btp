@@ -3560,6 +3560,36 @@ function doLogout() {
   document.getElementById('login-pwd').value = '';
 }
 
+// Restaure une session existante au chargement (évite de redemander le login).
+async function restoreSession() {
+  const raw = localStorage.getItem('mf_session');
+  if (!raw) return; // pas de session → on reste sur le login
+
+  let session;
+  try { session = JSON.parse(raw); } catch (e) { localStorage.removeItem('mf_session'); return; }
+
+  // Le jeton est-il encore valide ? (expires_at est en secondes Unix)
+  const now = Math.floor(Date.now() / 1000);
+  const stillValid = session.expires_at && session.expires_at > now + 60; // marge 60 s
+
+  if (!stillValid) {
+    // Jeton expiré → on tente de le renouveler avec le refresh_token
+    try {
+      const res = await fetch(`${sbApi.url}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: { 'apikey': sbApi.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: session.refresh_token })
+      });
+      if (!res.ok) { localStorage.removeItem('mf_session'); return; } // refresh refusé → login
+      session = await res.json();
+    } catch (e) {
+      return; // hors-ligne : on garde la session, on laisse le login
+    }
+  }
+
+  await applySession(session);
+}
+
 function showInviteScreen() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('invite-screen').style.display = 'flex';
@@ -6599,7 +6629,7 @@ function renderApropos(div) {
         <div class="apropos-hero-badge">M & F</div>
         <h1 class="apropos-hero-title">MOURON & FILS</h1>
         <div class="apropos-hero-sub">Application de gestion BTP</div>
-        <div class="apropos-hero-version">v0.1.0 alpha · 2026</div>
+        <div class="apropos-hero-version">v0.3.0 alpha · 2026</div>
       </div>
 
       <!-- Contenu -->
@@ -8410,6 +8440,9 @@ window.addEventListener('load', ()=>{
         localStorage.removeItem(STORAGE_KEY);
       }
       console.log('☁️ Mode CLOUD activé — chargement Supabase au login');
+
+      // Restaurer la session si l'utilisateur était déjà connecté
+      restoreSession();
     } else {
       // Mode hors-ligne / pas de Supabase
       DataStore.load();
