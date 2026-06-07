@@ -2179,7 +2179,7 @@ const CloudStore = {
       const chantiersData = await sbApi.get('chantiers', { order: 'id.desc' });
       const eventsData = await sbApi.get('events_cal', { order: 'date' });
       const rapportsData = await sbApi.get('rapports', { order: 'created_at.desc' });
-      const horairesData = await sbApi.get('horaires', { order: 'date.desc' });
+      const horairesData = await sbApi.get('feuilles_heures', { order: 'date.desc' });
       const conversationsData = await sbApi.get('conversations', { order: 'updated_at.desc' });
       const messagesData = await sbApi.get('messages', { order: 'created_at' });
       const invitationsData = await sbApi.get('invitations', { order: 'invited_at.desc' });
@@ -4384,26 +4384,44 @@ function cancelInvite(i) {
 
 // ── HEURES PERSONNEL (Comptable + Gérant) ──
 function renderHeures(div) {
-  // Génération automatique depuis TEAM_FULL
+  // ── Calcul depuis les vraies données (HORAIRES_PERSO ← feuilles_heures) ──
+  const r1 = n => Math.round(n * 10) / 10;
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // 0 = lundi
+  const weekStart = new Date(now); weekStart.setHours(0, 0, 0, 0); weekStart.setDate(now.getDate() - dow);
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const inRange = (iso, a, b) => { const d = new Date(iso + 'T00:00:00'); return d >= a && d < b; };
+  const isWorked = e => e.type !== 'absence' && e.type !== 'conge';
+
   const HEURES_DATA = Object.values(TEAM_FULL).map(m => {
-    // Heures simulées par rôle
-    const baseHours = {gerant:42, charge:39, comptable:35, secretaire:35, 'chef-equipe':44, depanneur:42, ouvrier:38};
-    const sem = baseHours[m.roleKey] || 35;
-    const contrat = m.workHours.includes('39') ? 39 : 35;
+    const entries = HORAIRES_PERSO[m.initials] || [];
+    const sem = entries.filter(e => isWorked(e) && inRange(e.date, weekStart, weekEnd)).reduce((s, e) => s + (e.total || 0), 0);
+    const mois = entries.filter(e => isWorked(e) && inRange(e.date, monthStart, monthEnd)).reduce((s, e) => s + (e.total || 0), 0);
+    const contrat = (m.workHours || '').includes('39') ? 39 : 35;
     const supp = Math.max(0, sem - contrat);
     return {
       av: m.initials, bg: m.bg, name: m.fullName, role: m.role,
-      sem, mois: sem * 4, contrat, supp,
+      sem: r1(sem), mois: r1(mois), contrat, supp: r1(supp),
       role_k: m.roleKey, initials: m.initials
     };
   });
+
+  // KPI calculés sur la semaine en cours
+  const kpiTotalSem = r1(HEURES_DATA.reduce((s, h) => s + h.sem, 0));
+  const kpiSupp = r1(HEURES_DATA.reduce((s, h) => s + h.supp, 0));
+  const kpiActifs = HEURES_DATA.filter(h => h.sem > 0).length;
+  const kpiAbsences = Object.values(HORAIRES_PERSO).reduce((s, arr) => s + arr.filter(e => e.type === 'absence' && inRange(e.date, weekStart, weekEnd)).length, 0);
+  const moisLabel = MONTHS[now.getMonth()] + ' ' + now.getFullYear();
+  const weekLabel = 'Semaine du ' + weekStart.getDate() + ' ' + MONTHS[weekStart.getMonth()].slice(0, 3).toLowerCase() + '.';
 
   // Personnel qui saisit ses horaires personnels (ouvriers + chefs + dépanneurs)
   const persoUsers = HEURES_DATA.filter(h => ['ouvrier','chef-equipe','depanneur'].includes(h.role_k));
 
   div.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-    <div><div style="font-size:16px;font-weight:800;">Heures du personnel</div><div style="font-size:12px;color:var(--text3)">Semaine 17 · Avril 2025</div></div>
+    <div><div style="font-size:16px;font-weight:800;">Heures du personnel</div><div style="font-size:12px;color:var(--text3)">${weekLabel} · ${moisLabel}</div></div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-ghost btn-sm">⬇ Exporter</button>
       <button class="btn btn-primary btn-sm">📊 Rapport mensuel</button>
@@ -4417,10 +4435,10 @@ function renderHeures(div) {
   </div>
 
   <div class="kpi-row">
-    <div class="kpi-box blue"><div class="kpi-num">272</div><div class="kpi-lbl">Heures totales<br>cette semaine</div></div>
-    <div class="kpi-box orange"><div class="kpi-num">19</div><div class="kpi-lbl">Heures<br>supplémentaires</div></div>
-    <div class="kpi-box green"><div class="kpi-num">7</div><div class="kpi-lbl">Collaborateurs<br>actifs</div></div>
-    <div class="kpi-box red"><div class="kpi-num">1</div><div class="kpi-lbl">Absences<br>cette semaine</div></div>
+    <div class="kpi-box blue"><div class="kpi-num">${kpiTotalSem}</div><div class="kpi-lbl">Heures totales<br>cette semaine</div></div>
+    <div class="kpi-box orange"><div class="kpi-num">${kpiSupp}</div><div class="kpi-lbl">Heures<br>supplémentaires</div></div>
+    <div class="kpi-box green"><div class="kpi-num">${kpiActifs}</div><div class="kpi-lbl">Collaborateurs<br>actifs</div></div>
+    <div class="kpi-box red"><div class="kpi-num">${kpiAbsences}</div><div class="kpi-lbl">Absences<br>cette semaine</div></div>
   </div>
 
   <div class="section-title">Vue globale — Synthèse</div>
