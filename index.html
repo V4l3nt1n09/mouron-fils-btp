@@ -2523,14 +2523,12 @@ const CloudStore = {
         date: entry.date,
         plages: entry.plages || [],
         panier: entry.panier || false,
-        lieu: entry.lieu || '',
         status: entry.status,
         total: entry.total || 0,
-        type: entry.type || 'travail',
         notes: entry.notes || '',
       };
       // Upsert : remplace si même (initials, date) existe
-      await sbApi.upsert('horaires', payload, 'member_initials,date');
+      await sbApi.upsert('feuilles_heures', payload, 'member_initials,date');
       this._flashSync();
     } catch (e) {
       console.error('☁️ saveHoraire', e);
@@ -2713,7 +2711,7 @@ const CloudStore = {
 
       // 2. Horaires (upsert)
       for (const [key, entry] of queue.horaires.entries()) {
-        await sbApi.upsert('horaires', entry, 'member_initials,date');
+        await sbApi.upsert('feuilles_heures', entry, 'member_initials,date');
       }
       queue.horaires.clear();
 
@@ -2768,10 +2766,8 @@ const CloudStore = {
       date: entry.date,
       plages: entry.plages || [],
       panier: entry.panier || false,
-      lieu: entry.lieu || '',
       status: entry.status,
       total: entry.total || 0,
-      type: entry.type || 'travail',
       notes: entry.notes || '',
     });
     this._scheduleBatchSave();
