@@ -4496,9 +4496,16 @@ function horaireRowReadonlyHTML(e) {
   const typeBadge = e.type === 'absence' ? '<span class="hr-type-badge hr-badge-absence">Absent</span>'
                   : e.type === 'conge' ? '<span class="hr-type-badge hr-badge-conge">Congé</span>'
                   : '';
-  const rangeTxt = e.type === 'travail'
-    ? `${e.start} → ${e.end}${e.pause ? ` (pause ${e.pause}min)` : ''}`
-    : (e.notes || 'Absence');
+  const _plages = Array.isArray(e.plages) ? e.plages.filter(p => p && p.start && p.end) : [];
+  let rangeTxt;
+  if (e.type === 'travail') {
+    rangeTxt = _plages.length
+      ? _plages.map(p => `${p.start} → ${p.end}`).join(', ')
+      : (e.start ? `${e.start} → ${e.end}` : '—');
+    if (e.pause) rangeTxt += ` (pause ${e.pause}min)`;
+  } else {
+    rangeTxt = e.notes || 'Absence';
+  }
   return `<div class="horaires-row" style="grid-template-columns:90px 1fr 70px;">
     <div class="hr-date">
       <div class="hr-date-day">${dayLabel}</div>
