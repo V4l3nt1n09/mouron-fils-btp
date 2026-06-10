@@ -5076,22 +5076,43 @@ function renderMesHoraires(div) {
   const u = currentUser;
   const myInitials = u.assignedTo || u.initials;
 
-  // Construire la liste des 3 derniers jours à saisir
+  // ── Liste des jours ouvrés à saisir — logique "en continu" (façon Interfast) ──
+  // On affiche TOUS les jours ouvrés passés non saisis, depuis une borne de départ
+  // jusqu'à aujourd'hui inclus (jamais de jour futur). La borne = le plus récent
+  // entre la date d'embauche et (aujourd'hui − HORAIRES_HORIZON_JOURS), pour éviter
+  // une liste interminable le tout premier jour d'utilisation.
+  const HORAIRES_HORIZON_JOURS = 30;
+
   const today = new Date();
-  const joursASaisir = [];
-  for (let i = 0; i < 3; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    // Ne pas inclure les week-ends (samedi=6, dimanche=0) — sauf si déjà saisi en supplément
-    if (d.getDay() === 0 || d.getDay() === 6) continue;
-    const iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-    // Vérifier si déjà saisi
-    const exists = (HORAIRES_PERSO[myInitials] || []).some(e => e.date === iso && e.status !== 'draft');
-    if (!exists) {
-      joursASaisir.push({date: d, iso});
-    }
-    if (joursASaisir.length >= 3) break;
+  today.setHours(0, 0, 0, 0);
+
+  // Borne basse par défaut : aujourd'hui − horizon
+  const borne = new Date(today);
+  borne.setDate(today.getDate() - HORAIRES_HORIZON_JOURS);
+
+  // Si la date d'embauche est connue (chargée dans TEAM_FULL), ne jamais remonter avant
+  const _cs = TEAM_FULL[myInitials] && TEAM_FULL[myInitials].contractStart;
+  if (_cs) {
+    const dEmbauche = new Date(_cs + 'T00:00:00');
+    if (!isNaN(dEmbauche.getTime()) && dEmbauche > borne) borne.setTime(dEmbauche.getTime());
   }
+
+  // Jours déjà saisis : toute entrée enregistrée (brouillon ou validée) sort le jour
+  // de la liste "À saisir" (il reste modifiable via l'onglet Historique).
+  const dejaSaisi = new Set((HORAIRES_PERSO[myInitials] || []).map(e => e.date));
+
+  // Parcours d'aujourd'hui jusqu'à la borne, en gardant les jours ouvrés non saisis
+  const joursASaisir = [];
+  const cursor = new Date(today);
+  while (cursor >= borne) {
+    const dow = cursor.getDay(); // 0 = dimanche, 6 = samedi
+    if (dow !== 0 && dow !== 6) {
+      const iso = cursor.getFullYear() + '-' + String(cursor.getMonth()+1).padStart(2,'0') + '-' + String(cursor.getDate()).padStart(2,'0');
+      if (!dejaSaisi.has(iso)) joursASaisir.push({ date: new Date(cursor), iso });
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  // joursASaisir : du plus récent (aujourd'hui) au plus ancien.
 
   // Mois validés pour ce membre
   const moisValides = MOIS_VALIDES[myInitials] || [];
