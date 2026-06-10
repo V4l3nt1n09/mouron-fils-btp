@@ -2175,14 +2175,19 @@ const CloudStore = {
       };
 
       // Requêtes séquentielles via API REST native (pas de SDK = pas de DataCloneError)
-      const clientsData = await sbApi.get('clients', { order: 'id' });
-      const chantiersData = await sbApi.get('chantiers', { order: 'id.desc' });
-      const eventsData = await sbApi.get('events_cal', { order: 'date' });
-      const rapportsData = await sbApi.get('rapports', { order: 'created_at.desc' });
-      const horairesData = await sbApi.get('feuilles_heures', { order: 'date.desc' });
-      const conversationsData = await sbApi.get('conversations', { order: 'updated_at.desc' });
-      const messagesData = await sbApi.get('messages', { order: 'created_at' });
-      const invitationsData = await sbApi.get('invitations', { order: 'invited_at.desc' });
+      // safeGet : si une table échoue (supprimée, RLS, réseau…), on logue et on renvoie []
+      // au lieu de laisser l'exception interrompre TOUT le chargement (bascule hors-ligne).
+      const safeGet = async (table, params) => {
+        try { return await sbApi.get(table, params); }
+        catch (e) { console.error(`☁️ [CloudStore] Échec chargement « ${table} » :`, e.message); return []; }
+      };
+      const clientsData = await safeGet('clients', { order: 'id' });
+      const chantiersData = await safeGet('chantiers', { order: 'id.desc' });
+      const eventsData = await safeGet('events_cal', { order: 'date' });
+      const rapportsData = await safeGet('rapports', { order: 'created_at.desc' });
+      const horairesData = await safeGet('feuilles_heures', { order: 'date.desc' });
+      const conversationsData = await safeGet('conversations', { order: 'updated_at.desc' });
+      const messagesData = await safeGet('messages', { order: 'created_at' });
 
       // Mapper les données Supabase vers le format de l'app (chacun protégé par try/catch)
       try { this._mapClientsToApp(clientsData); } catch (e) { console.error('Map clients', e); }
@@ -2191,7 +2196,6 @@ const CloudStore = {
       try { this._mapRapportsToApp(rapportsData); } catch (e) { console.error('Map rapports', e); }
       try { this._mapHorairesToApp(horairesData); } catch (e) { console.error('Map horaires', e); }
       try { this._mapConversationsToApp(conversationsData, messagesData); } catch (e) { console.error('Map conversations', e); }
-      try { this._mapInvitationsToApp(invitationsData); } catch (e) { console.error('Map invitations', e); }
 
       // Mettre à jour les compteurs
       if (CLIENTS_DB.length > 0) {
