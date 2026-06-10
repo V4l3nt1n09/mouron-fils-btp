@@ -4534,7 +4534,7 @@ function renderMonPlanning(div) {
     </button>
   </div>
   <div id="worker-content"></div>`;
-  const myC = CHANTIERS.filter(c => c.equipe.includes(u.assignedTo || u.initials));
+  const myC = CHANTIERS.filter(c => c.equipe.includes(u.assignedTo || u.initials) && c.type !== 'termine');
   renderWorkerContent(div.querySelector('#worker-content'), myC);
 }
 
@@ -4542,7 +4542,7 @@ function setWorkerView(v) {
   workerView = v;
   document.querySelectorAll('.wv-btn').forEach(b => b.classList.toggle('active', b.textContent === (v==='day'?'Jour':'Semaine')));
   const u = currentUser;
-  const myC = CHANTIERS.filter(c => c.equipe.includes(u.assignedTo || u.initials));
+  const myC = CHANTIERS.filter(c => c.equipe.includes(u.assignedTo || u.initials) && c.type !== 'termine');
   renderWorkerContent(document.getElementById('worker-content'), myC);
 }
 
@@ -4650,13 +4650,24 @@ function selectWorkerDay(y,m,d){workerDay=new Date(y,m,d);renderPage('mon-planni
 // ── MES CHANTIERS (Chef d'équipe) ──
 function renderMesChantiers(div) {
   const u = currentUser;
-  const myC = CHANTIERS.filter(c => c.equipe.includes(u.initials));
+  const teamC = CHANTIERS.filter(c => c.equipe.includes(u.initials));
   const canReport = ['chef-equipe','depanneur','ouvrier','gerant','charge'].includes(u.role);
   const canHoraires = ['chef-equipe','depanneur','ouvrier'].includes(u.role);
 
+  // Comptage par statut
+  const nbEnCours = teamC.filter(c => c.type !== 'termine').length;
+  const nbRetard  = teamC.filter(c => c.type === 'retard').length;
+  const nbTermine = teamC.filter(c => c.type === 'termine').length;
+
+  // Liste affichée selon l'onglet actif — terminés masqués par défaut (onglet "En cours")
+  let shown;
+  if (mesChantiersFilter === 'retard')       shown = teamC.filter(c => c.type === 'retard');
+  else if (mesChantiersFilter === 'termine') shown = teamC.filter(c => c.type === 'termine');
+  else                                       shown = teamC.filter(c => c.type !== 'termine');
+
   div.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;gap:8px;flex-wrap:wrap;">
-    <div><div style="font-size:16px;font-weight:800;">Mes Chantiers</div><div style="font-size:12px;color:var(--text3)">${myC.length} chantier(s) assigné(s)</div></div>
+    <div><div style="font-size:16px;font-weight:800;">Mes Chantiers</div><div style="font-size:12px;color:var(--text3)">${teamC.length} chantier(s) assigné(s)</div></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       ${canHoraires?`<button class="chrono-btn" onclick="navigateTo('mes-horaires')" title="Mes feuilles d'heures" style="padding:8px 12px;font-size:12px;">
         <span class="chrono-icon" style="font-size:16px;">⏱</span>
@@ -4666,19 +4677,26 @@ function renderMesChantiers(div) {
     </div>
   </div>
   <div class="filter-row">
-    <div class="ftab active" onclick="filterClick(this)">Tous (${myC.length})</div>
-    <div class="ftab" onclick="filterClick(this)">En cours</div>
-    <div class="ftab" onclick="filterClick(this)">Retard</div>
+    <div class="ftab ${mesChantiersFilter==='encours'?'active':''}" onclick="setMesChantiersFilter('encours')">En cours (${nbEnCours})</div>
+    <div class="ftab ${mesChantiersFilter==='retard'?'active':''}" onclick="setMesChantiersFilter('retard')">Retard (${nbRetard})</div>
+    <div class="ftab ${mesChantiersFilter==='termine'?'active':''}" onclick="setMesChantiersFilter('termine')">Terminés (${nbTermine})</div>
   </div>
-  ${myC.map(c=>mesChantiersCardHTML(c)).join('')}`;
+  ${shown.length === 0
+    ? `<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;">Aucun chantier dans cette catégorie</div>`
+    : shown.map(c=>mesChantiersCardHTML(c)).join('')}`;
 
   // Clic sur la carte (hors bouton rapport) → ouvre le panneau de détail
   div.querySelectorAll('.if-card').forEach((el,i)=>{
     el.onclick=(e)=>{
       if (e.target.closest('.card-report-btn')) return;
-      openDetail(myC[i]);
+      openDetail(shown[i]);
     };
   });
+}
+
+function setMesChantiersFilter(f) {
+  mesChantiersFilter = f;
+  renderMesChantiers(document.getElementById('content-area'));
 }
 
 function mesChantiersCardHTML(c) {
@@ -4701,8 +4719,9 @@ function mesChantiersCardHTML(c) {
 
 // ── CHANTIERS ──
 // État des filtres pour la page Chantiers
+let mesChantiersFilter = 'encours';   // encours (défaut, masque les terminés) | retard | termine
 let chantiersFilters = {
-  status: 'tous',     // tous | encours | retard | termine
+  status: 'encours',  // tous | encours | retard | termine  (défaut : masque les terminés)
   client: '',         // recherche par nom de client
   team: '',           // initiales d'un membre d'équipe
   devis: 'tous',      // tous | avec | sans
