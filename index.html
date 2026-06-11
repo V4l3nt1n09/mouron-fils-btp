@@ -2569,6 +2569,12 @@ const CloudStore = {
         prevoir_devis: !!rapport.prevoirDevis,
         photos: cleanPhotos,
         articles: cleanArticles,
+        heures: rapport.heures || {},
+        signature_tech: rapport.signatureTech || null,
+        signature_client: rapport.signatureClient || null,
+        commentaire_tech: rapport.commentaireTech || '',
+        commentaire_client: rapport.commentaireClient || '',
+        documents: rapport.documents || {},
         heures_total: Number(rapport.heuresTotal || 0),
       };
       await sbApi.upsert('rapports', payload);
@@ -7750,10 +7756,58 @@ function submitRapport(type) {
   _doSubmitRapport(type);
 }
 
+function buildRapportRecord(type) {
+  const r = currentReport;
+  const c = r.chantier || {};
+  // Total heures = somme des durées arrivée→départ de chaque membre
+  let total = 0;
+  Object.values(r.heures || {}).forEach(h => {
+    if (h && h.start && h.end) {
+      const [sh, sm] = h.start.split(':').map(Number);
+      const [eh, em] = h.end.split(':').map(Number);
+      total += Math.max(0, (eh * 60 + em) - (sh * 60 + sm)) / 60;
+    }
+  });
+  const now = new Date();
+  const iso = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  return {
+    id: r.rapportId || ('RAP-' + iso.replace(/-/g,'') + '-' + (c.id || 'X') + '-' + Date.now().toString(36)),
+    chantierId: c.id || null,
+    client: c.client || '',
+    ref: c.ref || '',
+    travaux: c.travaux || '',
+    addr: c.addr || '',
+    date: iso,
+    createdBy: currentUser.assignedTo || currentUser.initials,
+    status: (type === 'termine') ? 'termine' : 'jour',
+    symptomes: r.symptomes || '',
+    diagnostic: r.diagnostic || '',
+    effectues: r.effectues || '',
+    prevoirIntervention: !!r.prevoirIntervention,
+    prevoirDevis: !!r.prevoirDevis,
+    photos: r.photos || [],
+    articles: r.articles || [],
+    heures: r.heures || {},
+    heuresTotal: Number(total.toFixed(2)),
+    signatureTech: r.signatureTech || null,
+    signatureClient: r.signatureClient || null,
+    commentaireTech: r.commentaireTech || '',
+    commentaireClient: r.commentaireClient || '',
+    documents: { cerfa: !!r.hasCerfa, pv: !!r.hasPV, tva: !!r.hasTVA },
+  };
+}
+
 function _doSubmitRapport(type) {
   const r = currentReport;
+
+  // Construire la fiche rapport cohérente à partir du formulaire
+  const fiche = buildRapportRecord(type);
+  // Upsert en mémoire → visible immédiatement dans "Mes Rapports"
+  const idx = RAPPORTS_DB.findIndex(x => x.id === fiche.id);
+  if (idx >= 0) RAPPORTS_DB[idx] = fiche; else RAPPORTS_DB.unshift(fiche);
+
   if (type === 'termine') {
-    // BASCULE AUTO du chantier en "Terminé"
+    // BASCULE AUTO du chantier en "Terminé" (uniquement le rapport final)
     if (r.chantier) {
       const c = CHANTIERS.find(x => x.id === r.chantier.id);
       if (c) {
@@ -7766,16 +7820,12 @@ function _doSubmitRapport(type) {
       }
     }
     DataStore.save();
-    // Finalisation : sauvegarde IMMÉDIATE (important)
-    const rapportToSave = RAPPORTS_DB.find(x => x.id === r.id) || r;
-    CloudStore.saveRapport(rapportToSave);
+    CloudStore.saveRapport(fiche);   // sauvegarde immédiate
     showToast('✅ Rapport finalisé · Chantier basculé en Terminé');
   } else {
     DataStore.save();
-    // Brouillon : sauvegarde GROUPÉE (après 5 sec)
-    const rapportToSave = RAPPORTS_DB.find(x => x.id === r.id) || r;
-    CloudStore.queueRapport(rapportToSave);
-    showToast('📝 Rapport sauvegardé (intervention à poursuivre)');
+    CloudStore.saveRapport(fiche);   // rapport du jour finalisé (chantier reste actif)
+    showToast('📝 Rapport du jour enregistré');
   }
 
   setTimeout(() => navigateTo(['chef-equipe','depanneur','ouvrier'].includes(currentUser.role) ? 'mes-rapports' : 'rapports'), 800);
