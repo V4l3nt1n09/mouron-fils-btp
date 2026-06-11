@@ -3188,6 +3188,7 @@ let currentReport = {
   prevoirIntervention:false, prevoirDevis:false,
   hasCerfa:false, hasPV:false, hasTVA:false,
   photos:[], articles:[], heures:{}, signatureTech:null, signatureClient:null,
+  commentaireTech:'', commentaireClient:'',
 };
 
 // ══ HORAIRES PERSONNELS (saisie libre ouvrier/chef, remonte au comptable) ══
@@ -5071,6 +5072,7 @@ function startNewRapport() {
     prevoirIntervention:false, prevoirDevis:false,
     hasCerfa:false, hasPV:false, hasTVA:false,
     photos:[], articles:[], heures:{}, signatureTech:null, signatureClient:null,
+    commentaireTech:'', commentaireClient:'',
     readonly:false,
   };
   navigateTo('nouveau-rapport');
@@ -7404,6 +7406,7 @@ function startReportForChantier(id) {
     prevoirIntervention:false, prevoirDevis:false,
     hasCerfa:false, hasPV:false, hasTVA:false,
     photos:[], articles:[], heures:{}, signatureTech:null, signatureClient:null,
+    commentaireTech:'', commentaireClient:'',
     readonly:false,
   };
   navigateTo('nouveau-rapport');
@@ -7446,7 +7449,7 @@ function renderNouveauRapport(div) {
     <div class="report-section">
       <div class="report-field">
         <label class="report-label">Symptômes</label>
-        <textarea class="report-input" placeholder="Quels sont les symptômes ?" ${ro?'readonly':''}>${r.symptomes||''}</textarea>
+        <textarea class="report-input" placeholder="Quels sont les symptômes ?" ${ro?'readonly':''} oninput="currentReport.symptomes=this.value">${r.symptomes||''}</textarea>
       </div>
     </div>
 
@@ -7454,7 +7457,7 @@ function renderNouveauRapport(div) {
     <div class="report-section">
       <div class="report-field">
         <label class="report-label">Diagnostic</label>
-        <textarea class="report-input" placeholder="Diagnostic" ${ro?'readonly':''}>${r.diagnostic||''}</textarea>
+        <textarea class="report-input" placeholder="Diagnostic" ${ro?'readonly':''} oninput="currentReport.diagnostic=this.value">${r.diagnostic||''}</textarea>
       </div>
     </div>
 
@@ -7462,7 +7465,7 @@ function renderNouveauRapport(div) {
     <div class="report-section">
       <div class="report-field">
         <label class="report-label">Travaux effectués <span class="req">*</span></label>
-        <textarea class="report-input" placeholder="Décrivez précisément les travaux effectués..." ${ro?'readonly':''}>${r.effectues||''}</textarea>
+        <textarea class="report-input" placeholder="Décrivez précisément les travaux effectués..." ${ro?'readonly':''} oninput="currentReport.effectues=this.value">${r.effectues||''}</textarea>
       </div>
     </div>
 
@@ -7590,7 +7593,7 @@ function renderNouveauRapport(div) {
       <div id="sect-sig-tech" style="display:none;margin-top:10px;">
         <div class="report-field">
           <label class="report-label">Commentaires</label>
-          <textarea class="report-input" placeholder="Commentaires du technicien..." ${ro?'readonly':''}></textarea>
+          <textarea class="report-input" placeholder="Commentaires du technicien..." ${ro?'readonly':''} oninput="currentReport.commentaireTech=this.value">${r.commentaireTech||''}</textarea>
         </div>
         <label class="report-label">Signature</label>
         <div class="sig-canvas-wrap empty" id="sig-tech-wrap">
@@ -7620,7 +7623,7 @@ function renderNouveauRapport(div) {
       <div id="sect-sig-client" style="display:none;margin-top:10px;">
         <div class="report-field">
           <label class="report-label">Commentaires client</label>
-          <textarea class="report-input" placeholder="Commentaires du client..." ${ro?'readonly':''}></textarea>
+          <textarea class="report-input" placeholder="Commentaires du client..." ${ro?'readonly':''} oninput="currentReport.commentaireClient=this.value">${r.commentaireClient||''}</textarea>
         </div>
         <label class="report-label">Signature du client</label>
         <div class="sig-canvas-wrap empty" id="sig-client-wrap">
