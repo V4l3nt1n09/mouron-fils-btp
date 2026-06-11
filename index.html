@@ -2295,7 +2295,13 @@ const CloudStore = {
       prevoirDevis: r.prevoir_devis || false,
       photos: r.photos || [],
       articles: r.articles || [],
+      heures: r.heures || {},
       heuresTotal: r.heures_total || 0,
+      signatureTech: r.signature_tech || null,
+      signatureClient: r.signature_client || null,
+      commentaireTech: r.commentaire_tech || '',
+      commentaireClient: r.commentaire_client || '',
+      documents: r.documents || {},
     }));
   },
 
@@ -5036,10 +5042,12 @@ function viewRapportDetail(r) {
   // Pour l'instant on ouvre la version "consultation" du formulaire
   currentReport = {
     chantier: CHANTIERS.find(c=>c.id===r.chantierId) || CHANTIERS[0],
-    symptomes:r.symptomes, diagnostic:r.diagnostic, effectues:r.effectues,
+    symptomes:r.symptomes||'', diagnostic:r.diagnostic||'', effectues:r.effectues||'',
     prevoirIntervention:r.prevoirIntervention, prevoirDevis:r.prevoirDevis,
-    hasCerfa:false, hasPV:false, hasTVA:false,
-    photos:[], articles:[], heures:{}, signatureTech:null, signatureClient:null,
+    hasCerfa:!!(r.documents&&r.documents.cerfa), hasPV:!!(r.documents&&r.documents.pv), hasTVA:!!(r.documents&&r.documents.tva),
+    photos:r.photos||[], articles:r.articles||[], heures:r.heures||{},
+    signatureTech:r.signatureTech||null, signatureClient:r.signatureClient||null,
+    commentaireTech:r.commentaireTech||'', commentaireClient:r.commentaireClient||'',
     readonly:true, rapportId:r.id,
   };
   navigateTo('nouveau-rapport');
@@ -7656,10 +7664,15 @@ function renderNouveauRapport(div) {
     </div>`}
   </div>`;
 
-  // Init signature canvas
+  // Init signature canvas (+ réaffichage des signatures enregistrées en consultation)
   setTimeout(() => {
+    ['sig-tech','sig-client'].forEach(id => { if (sigState[id]) sigState[id].dataURL = null; });
     initSignatureCanvas('sig-tech');
     initSignatureCanvas('sig-client');
+    if (r.readonly) {
+      _displaySavedSignature('sig-tech', r.signatureTech);
+      _displaySavedSignature('sig-client', r.signatureClient);
+    }
   }, 100);
 }
 
@@ -8078,6 +8091,20 @@ function clearSig(id) {
   else if (id === 'sig-client') currentReport.signatureClient = null;
 
   showToast('🗑 Signature effacée');
+}
+
+function _displaySavedSignature(id, dataURL) {
+  if (!dataURL) return;
+  const s = sigState[id];
+  if (!s) return;
+  s.dataURL = dataURL;
+  s.hasContent = true;
+  const img = new Image();
+  img.onload = () => {
+    const rect = s.canvas.getBoundingClientRect();
+    s.ctx.drawImage(img, 0, 0, rect.width, rect.height);
+  };
+  img.src = dataURL;
 }
 
 function saveSig(type) {
