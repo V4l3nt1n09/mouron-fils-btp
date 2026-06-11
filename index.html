@@ -7450,7 +7450,7 @@ function renderNouveauRapport(div) {
         <label class="report-label">Client <span class="req">*</span></label>
         <select class="report-input" ${ro?'disabled':''} onchange="selectChantier(this.value)">
           <option value="">— Sélectionner un chantier —</option>
-          ${CHANTIERS.map(c=>`<option value="${c.id}" ${chantier.id===c.id?'selected':''}>${c.client} · ${c.ref}</option>`).join('')}
+          ${CHANTIERS.map(c=>`<option value="${c.id}" ${r.chantier && r.chantier.id===c.id?'selected':''}>${c.client} · ${c.ref}</option>`).join('')}
         </select>
       </div>
       <div class="report-field">
