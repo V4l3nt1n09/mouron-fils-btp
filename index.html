@@ -2121,6 +2121,40 @@ const sbApi = {
       return false;
     }
   },
+
+  // STORAGE — upload d'un fichier dans un bucket (privé)
+  async uploadFile(bucket, path, file) {
+    const url = `${this.url}/storage/v1/object/${bucket}/${encodeURI(path)}`;
+    const headers = {
+      'apikey': this.key,
+      'Authorization': this.headers['Authorization'],   // JWT utilisateur (après login)
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upsert': 'true',
+    };
+    const res = await fetch(url, { method: 'POST', headers, body: file });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Storage upload HTTP ${res.status}: ${err}`);
+    }
+    return await res.json();
+  },
+
+  // STORAGE — URL signée temporaire pour lire un fichier privé
+  async signedUrl(bucket, path, expiresIn = 3600) {
+    const url = `${this.url}/storage/v1/object/sign/${bucket}/${encodeURI(path)}`;
+    const headers = {
+      'apikey': this.key,
+      'Authorization': this.headers['Authorization'],
+      'Content-Type': 'application/json',
+    };
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ expiresIn }) });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Storage sign HTTP ${res.status}: ${err}`);
+    }
+    const data = await res.json();
+    return `${this.url}/storage/v1${data.signedURL}`;
+  },
 };
 
 // Pour la compatibilité avec le code existant qui utilise `sb`
@@ -2548,11 +2582,10 @@ const CloudStore = {
   async saveRapport(rapport) {
     if (!sb) return;
     try {
-      // Photos en base64 → on garde juste les noms (en attendant Supabase Storage)
-      const cleanPhotos = (rapport.photos || []).map(p => ({
-        name: String(p?.name || 'photo'),
-        placeholder: true,
-      }));
+      // Photos = fichiers Storage : on persiste { path, name } (pas l'URL signée, temporaire)
+      const cleanPhotos = (rapport.photos || [])
+        .filter(p => p && p.path)
+        .map(p => ({ path: String(p.path), name: String(p.name || 'photo') }));
       const cleanArticles = (rapport.articles || []).map(a => ({
         name: String(a?.name || ''),
         qty: Number(a?.qty || 0),
@@ -7525,8 +7558,14 @@ function renderNouveauRapport(div) {
       </div>
       <div id="sect-photos" style="display:none;margin-top:10px;">
         <div class="photos-zone">
-          ${r.photos.map((p,i)=>`<div class="photo-tile">${p}<button class="photo-tile-remove" onclick="removePhoto(${i})">✕</button></div>`).join('')}
-          ${!ro?`<div class="photo-add-tile" onclick="addPhoto()"><span style="font-size:22px;">📷</span><span style="font-size:10px;">Ajouter</span></div>`:''}
+          ${r.photos.map((p,i)=>{
+            const isImg = p && (p.path || p.url);
+            const inner = isImg
+              ? `<img src="${(p&&p.url)||''}" data-photo-idx="${i}" alt="${(p&&p.name)||''}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;background:#eee;">`
+              : `<span style="font-size:26px;">${typeof p==='string'?p:'📷'}</span>`;
+            return `<div class="photo-tile">${inner}${!ro?`<button class="photo-tile-remove" onclick="removePhoto(${i})">✕</button>`:''}</div>`;
+          }).join('')}
+          ${!ro?`<label class="photo-add-tile" style="cursor:pointer;"><span style="font-size:22px;">📷</span><span style="font-size:10px;">Ajouter</span><input type="file" accept="image/*" multiple capture="environment" style="display:none;" onchange="addRapportPhotos(this.files)"></label>`:''}
         </div>
       </div>
     </div>
@@ -7673,6 +7712,7 @@ function renderNouveauRapport(div) {
       _displaySavedSignature('sig-tech', r.signatureTech);
       _displaySavedSignature('sig-client', r.signatureClient);
     }
+    _resolveRapportPhotos();
   }, 100);
 }
 
@@ -7703,12 +7743,42 @@ function toggleDoc(name) {
   showToast(`📎 ${name} joint au rapport`);
 }
 
-function addPhoto() {
-  const emojis = ['🏠','🔧','💡','🛁','🔨','📐','🏗','⚡','🚿'];
-  currentReport.photos.push(emojis[Math.floor(Math.random()*emojis.length)]);
-  showToast('📸 Photo ajoutée');
-  renderPage('nouveau-rapport');
-  setTimeout(()=>toggleSection('photos'), 50);
+async function addRapportPhotos(files) {
+  if (currentReport.readonly || !files || !files.length) return;
+  const c = currentReport.chantier || {};
+  let ok = 0;
+  for (const f of Array.from(files)) {
+    try {
+      const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${c.id || 'sans-chantier'}/${Date.now()}-${safeName}`;
+      await sbApi.uploadFile('rapport-photos', path, f);
+      currentReport.photos.push({ path, name: f.name, url: URL.createObjectURL(f) });
+      ok++;
+    } catch (e) {
+      console.error('☁️ Upload photo échec', e.message || e);
+      showToast('⚠ Échec de l\'upload d\'une photo');
+    }
+  }
+  if (ok) {
+    renderPage('nouveau-rapport');
+    setTimeout(() => toggleSection('photos'), 50);
+    showToast(`📸 ${ok} photo(s) ajoutée(s)`);
+  }
+}
+
+// Résout les URL signées des photos persistées (chargées depuis la base) pour l'affichage
+async function _resolveRapportPhotos() {
+  const photos = (currentReport && currentReport.photos) || [];
+  for (let i = 0; i < photos.length; i++) {
+    const p = photos[i];
+    if (!p || !p.path) continue;
+    if (!p.url) {
+      try { p.url = await sbApi.signedUrl('rapport-photos', p.path, 3600); }
+      catch (e) { console.warn('☁️ signedUrl échec', e.message || e); continue; }
+    }
+    const img = document.querySelector(`#page-nouveau-rapport img[data-photo-idx="${i}"]`);
+    if (img && p.url) img.src = p.url;
+  }
 }
 function removePhoto(i) {
   currentReport.photos.splice(i, 1);
