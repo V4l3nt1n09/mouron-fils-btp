@@ -7539,136 +7539,205 @@ function startReportForChantier(id) {
 // ══════════════════════════════════════════════════════
 // NOUVEAU RAPPORT — Formulaire complet
 // ══════════════════════════════════════════════════════
-// ══ EXPORT PDF D'UN RAPPORT (impression → « Enregistrer en PDF ») ══
+// == EXPORT PDF D'UN RAPPORT (generation + telechargement direct via jsPDF) ==
+function loadJsPDF() {
+  return new Promise((resolve, reject) => {
+    if (window.jspdf && window.jspdf.jsPDF) return resolve(window.jspdf.jsPDF);
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    sc.onload = () => (window.jspdf && window.jspdf.jsPDF) ? resolve(window.jspdf.jsPDF) : reject(new Error('jsPDF indisponible'));
+    sc.onerror = () => reject(new Error('Echec du chargement de jsPDF'));
+    document.head.appendChild(sc);
+  });
+}
+
+function fetchImageDataURL(url) {
+  return fetch(url)
+    .then(resp => resp.blob())
+    .then(blob => new Promise((res) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result);
+      fr.onerror = () => res(null);
+      fr.readAsDataURL(blob);
+    }))
+    .catch(() => null);
+}
+
 async function exportRapportPDF() {
   const r = currentReport;
-  if (!r) { showToast('⚠ Aucun rapport à exporter'); return; }
-  const w = window.open('', '_blank');
-  if (!w) { showToast('⚠ Autorisez les fenêtres pop-up pour exporter le PDF'); return; }
-  try { w.document.write('<!doctype html><meta charset="utf-8"><title>Rapport</title><body style="font-family:-apple-system,sans-serif;padding:40px;color:#333;">Génération du rapport…</body>'); } catch(_) {}
+  if (!r) { showToast('\u26a0 Aucun rapport \u00e0 exporter'); return; }
+  showToast('\ud83d\udcc4 G\u00e9n\u00e9ration du PDF\u2026');
 
-  // Rafraîchir les URLs des photos (les URLs signées expirent au bout d'1 h)
-  const photos = [];
+  let JsPDF;
+  try { JsPDF = await loadJsPDF(); }
+  catch (e) { showToast('\u26a0 G\u00e9n\u00e9rateur PDF indisponible (v\u00e9rifie ta connexion)'); return; }
+
+  // Pre-charger les photos (URL signee fraiche -> dataURL)
+  const photoData = [];
   for (const p of (r.photos || [])) {
     let url = (p && p.url) || '';
     if (p && p.path && typeof sbApi !== 'undefined' && sbApi.signedUrl) {
-      try { url = await sbApi.signedUrl('rapport-photos', p.path, 3600); } catch(_) {}
+      try { url = await sbApi.signedUrl('rapport-photos', p.path, 3600); } catch (_) {}
     }
-    if (url) photos.push({ url, name: (p && p.name) || '' });
+    if (url) { const d = await fetchImageDataURL(url); if (d) photoData.push(d); }
   }
 
-  const html = buildRapportPrintHTML(r, photos);
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-}
-
-function buildRapportPrintHTML(r, photos) {
-  const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
   const ch = r.chantier || {};
   const equipe = ch.equipe || [];
-  const sec = (title, body) => body ? `<div class="sec"><div class="sec-t">${esc(title)}</div><div class="sec-b">${body}</div></div>` : '';
+  const doc = new JsPDF({ unit: 'mm', format: 'a4' });
 
-  // Heures par intervenant
-  let hRows = '';
+  const M = 14, PW = 210, PH = 297, CW = PW - 2 * M, BOTTOM = PH - M;
+  let y = M;
+  const ensure = (h) => { if (y + h > BOTTOM) { doc.addPage(); y = M; } };
+  const font = (size, style, color) => {
+    doc.setFont('helvetica', style || 'normal');
+    doc.setFontSize(size);
+    const c = color || [26, 29, 35];
+    doc.setTextColor(c[0], c[1], c[2]);
+  };
+  const heading = (txt) => {
+    ensure(11);
+    font(10, 'bold', [37, 99, 235]);
+    doc.text(String(txt).toUpperCase(), M, y);
+    y += 1.8;
+    doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3);
+    doc.line(M, y, M + CW, y);
+    y += 5;
+  };
+  const paragraph = (txt) => {
+    font(10.5, 'normal');
+    doc.splitTextToSize(String(txt), CW).forEach(line => { ensure(6); doc.text(line, M, y); y += 5; });
+    y += 2;
+  };
+  const table = (headers, rows, widths) => {
+    const rh = 7;
+    ensure(rh);
+    doc.setFillColor(241, 245, 249); doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2);
+    doc.rect(M, y, CW, rh, 'FD');
+    font(9, 'bold');
+    let x = M;
+    headers.forEach((h, idx) => { doc.text(String(h), x + 2, y + rh - 2.5); x += widths[idx]; });
+    y += rh;
+    font(9, 'normal');
+    rows.forEach(row => {
+      ensure(rh);
+      doc.setDrawColor(229, 231, 235);
+      doc.rect(M, y, CW, rh);
+      x = M;
+      row.forEach((cell, idx) => {
+        const right = (idx >= headers.length - 2);
+        const lines = doc.splitTextToSize(String(cell), widths[idx] - 3);
+        if (right) doc.text(lines[0] || '', x + widths[idx] - 2, y + rh - 2.5, { align: 'right' });
+        else doc.text(lines[0] || '', x + 2, y + rh - 2.5);
+        x += widths[idx];
+      });
+      y += rh;
+    });
+    y += 3;
+  };
+
+  // En-tete
+  font(20, 'bold');
+  doc.text('MOURON & FILS', M, y + 3);
+  font(8, 'normal', [107, 114, 128]);
+  doc.text('B\u00c2TIMENT \u00b7 TRAVAUX PUBLICS', M, y + 8);
+  const titre = r.rapportId ? ('Rapport ' + r.rapportId) : "Rapport d'intervention";
+  const dateStr = (r.date && typeof r.date === 'string') ? r.date : new Date().toLocaleDateString('fr-FR');
+  font(13, 'bold');
+  doc.text(titre, PW - M, y + 3, { align: 'right' });
+  font(9, 'normal', [107, 114, 128]);
+  doc.text('\u00c9dit\u00e9 le ' + dateStr, PW - M, y + 8, { align: 'right' });
+  y += 13;
+  doc.setDrawColor(37, 99, 235); doc.setLineWidth(0.8); doc.line(M, y, M + CW, y);
+  y += 7;
+
+  // Meta
+  font(10, 'normal');
+  doc.text('Client : ' + (ch.client || '\u2014'), M, y);
+  doc.text('R\u00e9f\u00e9rence : ' + (ch.ref || '\u2014'), M + CW / 2, y);
+  y += 6;
+  doc.splitTextToSize('Adresse : ' + (ch.addr || '\u2014'), CW).forEach(l => { doc.text(l, M, y); y += 6; });
+  y += 3;
+
+  // Sections texte
+  if (r.symptomes) { heading('Sympt\u00f4mes'); paragraph(r.symptomes); }
+  if (r.diagnostic) { heading('Diagnostic'); paragraph(r.diagnostic); }
+  if (r.effectues) { heading('Travaux effectu\u00e9s'); paragraph(r.effectues); }
+  if (r.prevoirIntervention || r.prevoirDevis) {
+    heading('Travaux \u00e0 pr\u00e9voir');
+    font(10.5, 'normal');
+    if (r.prevoirIntervention) { ensure(6); doc.text('\u2022  Pr\u00e9voir une autre intervention', M, y); y += 5; }
+    if (r.prevoirDevis) { ensure(6); doc.text('\u2022  Pr\u00e9voir un devis', M, y); y += 5; }
+    y += 2;
+  }
+
+  // Heures
+  const hRows = [];
   equipe.forEach(t => {
     const tech = (typeof EQUIPE_MAP !== 'undefined' && EQUIPE_MAP[t]) || { n: t, role: '' };
     const h = (r.heures && r.heures[t]) || {};
-    if (h.start || h.end) hRows += `<tr><td>${esc(tech.n)}</td><td>${esc(tech.role || '')}</td><td>${esc(h.start || '—')}</td><td>${esc(h.end || '—')}</td></tr>`;
+    if (h.start || h.end) hRows.push([tech.n, tech.role || '', h.start || '\u2014', h.end || '\u2014']);
   });
-  const hTable = hRows ? `<table class="tbl"><thead><tr><th>Intervenant</th><th>Rôle</th><th>Arrivée</th><th>Départ</th></tr></thead><tbody>${hRows}</tbody></table>` : '';
+  if (hRows.length) { heading('Heures par intervenant'); table(['Intervenant', 'R\u00f4le', 'Arriv\u00e9e', 'D\u00e9part'], hRows, [62, 58, 31, 31]); }
 
-  // Articles / Matériel
-  let aRows = '', total = 0;
+  // Articles
+  const aRows = []; let total = 0;
   (r.articles || []).forEach(a => {
     const qty = Number(a.qty) || 0, price = Number(a.price) || 0, lt = qty * price;
     total += lt;
-    aRows += `<tr><td>${esc(a.name)}</td><td style="text-align:center;">${qty}</td><td style="text-align:right;">${price.toFixed(2)} €</td><td style="text-align:right;">${lt.toFixed(2)} €</td></tr>`;
+    aRows.push([a.name || '', String(qty), price.toFixed(2) + ' \u20ac', lt.toFixed(2) + ' \u20ac']);
   });
-  const aTable = aRows ? `<table class="tbl"><thead><tr><th>Article / Matériel</th><th style="text-align:center;">Qté</th><th style="text-align:right;">PU</th><th style="text-align:right;">Total</th></tr></thead><tbody>${aRows}</tbody><tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;">Total</td><td style="text-align:right;font-weight:700;">${total.toFixed(2)} €</td></tr></tfoot></table>` : '';
-
-  // Travaux à prévoir
-  const prevoir = [];
-  if (r.prevoirIntervention) prevoir.push('Prévoir une autre intervention');
-  if (r.prevoirDevis) prevoir.push('Prévoir un devis');
-  const prevoirHtml = prevoir.length ? '<ul>' + prevoir.map(p => `<li>${esc(p)}</li>`).join('') + '</ul>' : '';
+  if (aRows.length) {
+    heading('Articles / Mat\u00e9riel');
+    table(['Article / Mat\u00e9riel', 'Qt\u00e9', 'PU', 'Total'], aRows, [88, 22, 36, 36]);
+    font(10, 'bold');
+    ensure(6); doc.text('Total : ' + total.toFixed(2) + ' \u20ac', M + CW, y, { align: 'right' }); y += 7;
+  }
 
   // Photos
-  const photosHtml = photos.length ? `<div class="photos">${photos.map(p => `<img src="${p.url}" alt="${esc(p.name)}">`).join('')}</div>` : '';
+  if (photoData.length) {
+    heading('Photos');
+    const gap = 4, cols = 2, pw = (CW - gap) / cols, ph = pw * 0.7;
+    let col = 0;
+    photoData.forEach(d => {
+      if (col === 0) ensure(ph + gap);
+      const px = M + col * (pw + gap);
+      const fmt = d.indexOf('image/png') >= 0 ? 'PNG' : 'JPEG';
+      try { doc.addImage(d, fmt, px, y, pw, ph); } catch (_) {}
+      col++;
+      if (col >= cols) { col = 0; y += ph + gap; }
+    });
+    if (col !== 0) y += ph + gap;
+    y += 2;
+  }
 
   // Signatures
-  const sigBlock = (label, img, comment) => (!img && !comment) ? '' : `<div class="sig">
-      <div class="sig-l">${esc(label)}</div>
-      ${comment ? `<div class="sig-c">${esc(comment)}</div>` : ''}
-      ${img ? `<img src="${img}" alt="signature">` : '<div class="sig-empty">Non signé</div>'}
-    </div>`;
-  const sigsHtml = `<div class="sigs">${sigBlock('Technicien', r.signatureTech, r.commentaireTech)}${sigBlock('Client', r.signatureClient, r.commentaireClient)}</div>`;
+  if (r.signatureTech || r.signatureClient || r.commentaireTech || r.commentaireClient) {
+    ensure(52);
+    heading('Signatures');
+    const colW = (CW - 8) / 2;
+    const sigStart = y;
+    const drawSig = (x, label, img, comment) => {
+      let yy = sigStart;
+      font(9, 'bold', [107, 114, 128]);
+      doc.text(String(label).toUpperCase(), x, yy); yy += 5;
+      if (comment) {
+        font(9, 'normal');
+        doc.splitTextToSize(String(comment), colW).slice(0, 4).forEach(l => { doc.text(l, x, yy); yy += 4.5; });
+        yy += 2;
+      }
+      if (img) { try { doc.addImage(img, 'PNG', x, yy, Math.min(colW, 58), 24); } catch (_) {} yy += 26; }
+      else { font(9, 'italic', [156, 163, 175]); doc.text('Non sign\u00e9', x, yy); yy += 6; }
+      return yy;
+    };
+    const yA = drawSig(M, 'Technicien', r.signatureTech, r.commentaireTech);
+    const yB = drawSig(M + colW + 8, 'Client', r.signatureClient, r.commentaireClient);
+    y = Math.max(yA, yB) + 3;
+  }
 
-  const dateStr = (r.date && typeof r.date === 'string') ? r.date : new Date().toLocaleDateString('fr-FR');
-  const titre = r.rapportId ? ('Rapport ' + r.rapportId) : "Rapport d'intervention";
-
-  return `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(titre)} — MOURON & FILS</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1d23; margin: 0; padding: 24px; line-height: 1.45; }
-  .toolbar { position: sticky; top: 0; background: #fff; padding: 8px 0 16px; }
-  .toolbar button { background: #2563eb; color: #fff; border: none; padding: 12px 22px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #2563eb; padding-bottom: 14px; margin-bottom: 18px; }
-  .brand { font-size: 22px; font-weight: 800; letter-spacing: .5px; }
-  .brand small { display: block; font-size: 10px; font-weight: 600; color: #6b7280; letter-spacing: 2px; margin-top: 2px; }
-  .doc-title { text-align: right; }
-  .doc-title b { font-size: 16px; }
-  .doc-title div { font-size: 12px; color: #6b7280; }
-  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; background: #f7f8fa; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; font-size: 13px; }
-  .meta b { color: #6b7280; font-weight: 600; }
-  .sec { margin-bottom: 16px; break-inside: avoid; }
-  .sec-t { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #2563eb; margin-bottom: 6px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
-  .sec-b { font-size: 13px; white-space: pre-wrap; }
-  .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  .tbl th, .tbl td { border: 1px solid #e5e7eb; padding: 7px 9px; text-align: left; }
-  .tbl th { background: #f1f5f9; font-weight: 700; }
-  .tbl tfoot td { background: #f7f8fa; }
-  ul { margin: 4px 0; padding-left: 20px; font-size: 13px; }
-  .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .photos img { width: 100%; height: 200px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
-  .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
-  .sig { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; break-inside: avoid; }
-  .sig-l { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 6px; }
-  .sig-c { font-size: 12px; margin-bottom: 8px; white-space: pre-wrap; }
-  .sig img { max-width: 100%; max-height: 120px; }
-  .sig-empty { color: #9ca3af; font-style: italic; font-size: 12px; }
-  @page { margin: 14mm; }
-  @media print { .toolbar { display: none !important; } body { padding: 0; } }
-</style></head>
-<body>
-  <div class="toolbar"><button onclick="window.print()">🖨 Imprimer / Enregistrer en PDF</button></div>
-  <div class="head">
-    <div class="brand">MOURON &amp; FILS<small>BÂTIMENT · TRAVAUX PUBLICS</small></div>
-    <div class="doc-title"><b>${esc(titre)}</b><div>Édité le ${esc(dateStr)}</div></div>
-  </div>
-  <div class="meta">
-    <div><b>Client :</b> ${esc(ch.client || '—')}</div>
-    <div><b>Référence chantier :</b> ${esc(ch.ref || '—')}</div>
-    <div style="grid-column:1/-1;"><b>Adresse :</b> ${esc(ch.addr || '—')}</div>
-  </div>
-  ${sec('Symptômes', r.symptomes ? esc(r.symptomes) : '')}
-  ${sec('Diagnostic', r.diagnostic ? esc(r.diagnostic) : '')}
-  ${sec('Travaux effectués', r.effectues ? esc(r.effectues) : '')}
-  ${sec('Travaux à prévoir', prevoirHtml)}
-  ${sec('Heures par intervenant', hTable)}
-  ${sec('Articles / Matériel', aTable)}
-  ${sec('Photos', photosHtml)}
-  ${sec('Signatures', sigsHtml)}
-  <script>
-    (function(){
-      function waitImages(){ var imgs=[].slice.call(document.images); return Promise.all(imgs.map(function(im){ return im.complete?Promise.resolve():new Promise(function(res){ im.onload=im.onerror=res; }); })); }
-      window.addEventListener('load', function(){ waitImages().then(function(){ setTimeout(function(){ try{ window.print(); }catch(e){} }, 350); }); });
-    })();
-  <\/script>
-</body></html>`;
+  const fname = ('Rapport_' + (r.rapportId || dateStr)).replace(/[^\w\-]+/g, '_') + '.pdf';
+  doc.save(fname);
+  showToast('\u2705 PDF t\u00e9l\u00e9charg\u00e9');
 }
 
 function renderNouveauRapport(div) {
