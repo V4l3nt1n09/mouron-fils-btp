@@ -7539,6 +7539,138 @@ function startReportForChantier(id) {
 // ══════════════════════════════════════════════════════
 // NOUVEAU RAPPORT — Formulaire complet
 // ══════════════════════════════════════════════════════
+// ══ EXPORT PDF D'UN RAPPORT (impression → « Enregistrer en PDF ») ══
+async function exportRapportPDF() {
+  const r = currentReport;
+  if (!r) { showToast('⚠ Aucun rapport à exporter'); return; }
+  const w = window.open('', '_blank');
+  if (!w) { showToast('⚠ Autorisez les fenêtres pop-up pour exporter le PDF'); return; }
+  try { w.document.write('<!doctype html><meta charset="utf-8"><title>Rapport</title><body style="font-family:-apple-system,sans-serif;padding:40px;color:#333;">Génération du rapport…</body>'); } catch(_) {}
+
+  // Rafraîchir les URLs des photos (les URLs signées expirent au bout d'1 h)
+  const photos = [];
+  for (const p of (r.photos || [])) {
+    let url = (p && p.url) || '';
+    if (p && p.path && typeof sbApi !== 'undefined' && sbApi.signedUrl) {
+      try { url = await sbApi.signedUrl('rapport-photos', p.path, 3600); } catch(_) {}
+    }
+    if (url) photos.push({ url, name: (p && p.name) || '' });
+  }
+
+  const html = buildRapportPrintHTML(r, photos);
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+function buildRapportPrintHTML(r, photos) {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
+  const ch = r.chantier || {};
+  const equipe = ch.equipe || [];
+  const sec = (title, body) => body ? `<div class="sec"><div class="sec-t">${esc(title)}</div><div class="sec-b">${body}</div></div>` : '';
+
+  // Heures par intervenant
+  let hRows = '';
+  equipe.forEach(t => {
+    const tech = (typeof EQUIPE_MAP !== 'undefined' && EQUIPE_MAP[t]) || { n: t, role: '' };
+    const h = (r.heures && r.heures[t]) || {};
+    if (h.start || h.end) hRows += `<tr><td>${esc(tech.n)}</td><td>${esc(tech.role || '')}</td><td>${esc(h.start || '—')}</td><td>${esc(h.end || '—')}</td></tr>`;
+  });
+  const hTable = hRows ? `<table class="tbl"><thead><tr><th>Intervenant</th><th>Rôle</th><th>Arrivée</th><th>Départ</th></tr></thead><tbody>${hRows}</tbody></table>` : '';
+
+  // Articles / Matériel
+  let aRows = '', total = 0;
+  (r.articles || []).forEach(a => {
+    const qty = Number(a.qty) || 0, price = Number(a.price) || 0, lt = qty * price;
+    total += lt;
+    aRows += `<tr><td>${esc(a.name)}</td><td style="text-align:center;">${qty}</td><td style="text-align:right;">${price.toFixed(2)} €</td><td style="text-align:right;">${lt.toFixed(2)} €</td></tr>`;
+  });
+  const aTable = aRows ? `<table class="tbl"><thead><tr><th>Article / Matériel</th><th style="text-align:center;">Qté</th><th style="text-align:right;">PU</th><th style="text-align:right;">Total</th></tr></thead><tbody>${aRows}</tbody><tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;">Total</td><td style="text-align:right;font-weight:700;">${total.toFixed(2)} €</td></tr></tfoot></table>` : '';
+
+  // Travaux à prévoir
+  const prevoir = [];
+  if (r.prevoirIntervention) prevoir.push('Prévoir une autre intervention');
+  if (r.prevoirDevis) prevoir.push('Prévoir un devis');
+  const prevoirHtml = prevoir.length ? '<ul>' + prevoir.map(p => `<li>${esc(p)}</li>`).join('') + '</ul>' : '';
+
+  // Photos
+  const photosHtml = photos.length ? `<div class="photos">${photos.map(p => `<img src="${p.url}" alt="${esc(p.name)}">`).join('')}</div>` : '';
+
+  // Signatures
+  const sigBlock = (label, img, comment) => (!img && !comment) ? '' : `<div class="sig">
+      <div class="sig-l">${esc(label)}</div>
+      ${comment ? `<div class="sig-c">${esc(comment)}</div>` : ''}
+      ${img ? `<img src="${img}" alt="signature">` : '<div class="sig-empty">Non signé</div>'}
+    </div>`;
+  const sigsHtml = `<div class="sigs">${sigBlock('Technicien', r.signatureTech, r.commentaireTech)}${sigBlock('Client', r.signatureClient, r.commentaireClient)}</div>`;
+
+  const dateStr = (r.date && typeof r.date === 'string') ? r.date : new Date().toLocaleDateString('fr-FR');
+  const titre = r.rapportId ? ('Rapport ' + r.rapportId) : "Rapport d'intervention";
+
+  return `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(titre)} — MOURON & FILS</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1d23; margin: 0; padding: 24px; line-height: 1.45; }
+  .toolbar { position: sticky; top: 0; background: #fff; padding: 8px 0 16px; }
+  .toolbar button { background: #2563eb; color: #fff; border: none; padding: 12px 22px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #2563eb; padding-bottom: 14px; margin-bottom: 18px; }
+  .brand { font-size: 22px; font-weight: 800; letter-spacing: .5px; }
+  .brand small { display: block; font-size: 10px; font-weight: 600; color: #6b7280; letter-spacing: 2px; margin-top: 2px; }
+  .doc-title { text-align: right; }
+  .doc-title b { font-size: 16px; }
+  .doc-title div { font-size: 12px; color: #6b7280; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; background: #f7f8fa; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; font-size: 13px; }
+  .meta b { color: #6b7280; font-weight: 600; }
+  .sec { margin-bottom: 16px; break-inside: avoid; }
+  .sec-t { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #2563eb; margin-bottom: 6px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  .sec-b { font-size: 13px; white-space: pre-wrap; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .tbl th, .tbl td { border: 1px solid #e5e7eb; padding: 7px 9px; text-align: left; }
+  .tbl th { background: #f1f5f9; font-weight: 700; }
+  .tbl tfoot td { background: #f7f8fa; }
+  ul { margin: 4px 0; padding-left: 20px; font-size: 13px; }
+  .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .photos img { width: 100%; height: 200px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+  .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+  .sig { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; break-inside: avoid; }
+  .sig-l { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 6px; }
+  .sig-c { font-size: 12px; margin-bottom: 8px; white-space: pre-wrap; }
+  .sig img { max-width: 100%; max-height: 120px; }
+  .sig-empty { color: #9ca3af; font-style: italic; font-size: 12px; }
+  @page { margin: 14mm; }
+  @media print { .toolbar { display: none !important; } body { padding: 0; } }
+</style></head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">🖨 Imprimer / Enregistrer en PDF</button></div>
+  <div class="head">
+    <div class="brand">MOURON &amp; FILS<small>BÂTIMENT · TRAVAUX PUBLICS</small></div>
+    <div class="doc-title"><b>${esc(titre)}</b><div>Édité le ${esc(dateStr)}</div></div>
+  </div>
+  <div class="meta">
+    <div><b>Client :</b> ${esc(ch.client || '—')}</div>
+    <div><b>Référence chantier :</b> ${esc(ch.ref || '—')}</div>
+    <div style="grid-column:1/-1;"><b>Adresse :</b> ${esc(ch.addr || '—')}</div>
+  </div>
+  ${sec('Symptômes', r.symptomes ? esc(r.symptomes) : '')}
+  ${sec('Diagnostic', r.diagnostic ? esc(r.diagnostic) : '')}
+  ${sec('Travaux effectués', r.effectues ? esc(r.effectues) : '')}
+  ${sec('Travaux à prévoir', prevoirHtml)}
+  ${sec('Heures par intervenant', hTable)}
+  ${sec('Articles / Matériel', aTable)}
+  ${sec('Photos', photosHtml)}
+  ${sec('Signatures', sigsHtml)}
+  <script>
+    (function(){
+      function waitImages(){ var imgs=[].slice.call(document.images); return Promise.all(imgs.map(function(im){ return im.complete?Promise.resolve():new Promise(function(res){ im.onload=im.onerror=res; }); })); }
+      window.addEventListener('load', function(){ waitImages().then(function(){ setTimeout(function(){ try{ window.print(); }catch(e){} }, 350); }); });
+    })();
+  <\/script>
+</body></html>`;
+}
+
 function renderNouveauRapport(div) {
   const r = currentReport;
   const ro = r.readonly;
@@ -7775,7 +7907,7 @@ function renderNouveauRapport(div) {
       <button class="report-btn-primary" onclick="submitRapport('termine')">✓ J'ai terminé l'intervention</button>
       <button class="report-btn-secondary" onclick="submitRapport('partiel')">Je n'ai pas terminé l'intervention</button>
     </div>` : `<div class="report-final-actions">
-      <button class="report-btn-primary" onclick="showToast('📄 Rapport exporté en PDF')">📄 Exporter en PDF</button>
+      <button class="report-btn-primary" onclick="exportRapportPDF()">📄 Exporter en PDF</button>
       ${['gerant','charge','comptable'].includes(currentUser.role)?`<button class="report-btn-secondary" onclick="showToast('✓ Rapport validé')">✓ Valider le rapport</button>`:''}
     </div>`}
   </div>`;
