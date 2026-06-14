@@ -2222,6 +2222,7 @@ const CloudStore = {
       const horairesData = await safeGet('feuilles_heures', { order: 'date.desc' });
       const conversationsData = await safeGet('conversations', { order: 'updated_at.desc' });
       const messagesData = await safeGet('messages', { order: 'created_at' });
+      const validationsData = await safeGet('feuilles_validation', { order: 'mois.desc' });
 
       // Mapper les données Supabase vers le format de l'app (chacun protégé par try/catch)
       try { this._mapClientsToApp(clientsData); } catch (e) { console.error('Map clients', e); }
@@ -2229,6 +2230,7 @@ const CloudStore = {
       try { this._mapEventsToApp(eventsData); } catch (e) { console.error('Map events', e); }
       try { this._mapRapportsToApp(rapportsData); } catch (e) { console.error('Map rapports', e); }
       try { this._mapHorairesToApp(horairesData); } catch (e) { console.error('Map horaires', e); }
+      try { this._mapValidationsToApp(validationsData); } catch (e) { console.error('Map validations', e); }
       try { this._mapConversationsToApp(conversationsData, messagesData); } catch (e) { console.error('Map conversations', e); }
 
       // Mettre à jour les compteurs
@@ -2353,6 +2355,15 @@ const CloudStore = {
         type: r.type || 'travail',
         notes: r.notes || '',
       });
+    });
+  },
+
+  _mapValidationsToApp(rows) {
+    Object.keys(VALIDATIONS_MOIS).forEach(k => delete VALIDATIONS_MOIS[k]);
+    (rows || []).forEach(r => {
+      if (!r || !r.member_initials || !r.mois) return;
+      if (!VALIDATIONS_MOIS[r.member_initials]) VALIDATIONS_MOIS[r.member_initials] = {};
+      VALIDATIONS_MOIS[r.member_initials][r.mois] = { by: r.validated_by || '', at: r.validated_at || null };
     });
   },
 
@@ -3239,6 +3250,8 @@ let currentReport = {
 // ══ HORAIRES PERSONNELS (saisie libre ouvrier/chef, remonte au comptable) ══
 // Structure : {initiales: [{date, start, end, type, notes, total}]}
 let HORAIRES_PERSO = {};
+// Validations mensuelles par la compta : { initiales: { 'YYYY-MM': {by, at} } }
+let VALIDATIONS_MOIS = {};
 
 // ══════════════════════════════════════════════════════
 // 💾 DATASTORE — Persistance localStorage
@@ -5260,25 +5273,66 @@ function renderHeuresResume(joursASaisir, moisActuel, moisValides, today) {
   `;
 }
 
+// État d'un mois pour une personne : 'asaisir' | 'encours' | 'valide' + total d'heures
+function etatMoisHoraires(initials, ym) {
+  const [y, m] = ym.split('-').map(Number);          // m = 1..12
+  const entries = (HORAIRES_PERSO[initials] || []).filter(e => (e.date || '').slice(0,7) === ym);
+  const total = entries.reduce((s, e) => s + (Number(e.total) || 0), 0);
+
+  // Validé par la compta ?
+  if (VALIDATIONS_MOIS[initials] && VALIDATIONS_MOIS[initials][ym]) return { etat: 'valide', total };
+
+  // Jours ouvrés (lun→ven) jusqu'à min(fin du mois, aujourd'hui)
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dernierJour = new Date(y, m, 0).getDate();
+  let limite = dernierJour;
+  if (y === today.getFullYear() && (m - 1) === today.getMonth()) limite = today.getDate();
+  else if (y > today.getFullYear() || (y === today.getFullYear() && (m - 1) > today.getMonth())) limite = 0;
+
+  const joursValides = new Set(entries.filter(e => e.status === 'validated').map(e => e.date));
+  let toutValide = limite > 0;
+  for (let d = 1; d <= limite; d++) {
+    const wd = new Date(y, m - 1, d).getDay();        // 0=dim, 6=sam
+    if (wd === 0 || wd === 6) continue;
+    const iso = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if (!joursValides.has(iso)) { toutValide = false; break; }
+  }
+  return { etat: toutValide ? 'encours' : 'asaisir', total };
+}
+
+// Onglet Historique du salarié : liste par MOIS avec les 3 états (cf. Interfast)
 function renderHeuresHistorique(initials) {
-  const entries = (HORAIRES_PERSO[initials] || []).slice().sort((a,b)=>b.date.localeCompare(a.date));
-  if (entries.length === 0) {
+  const entries = HORAIRES_PERSO[initials] || [];
+  const now = new Date();
+  const curYm = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const moisSet = new Set(entries.map(e => (e.date || '').slice(0,7)).filter(Boolean));
+  moisSet.add(curYm);
+  const moisList = Array.from(moisSet).sort((a,b) => b.localeCompare(a));   // plus récent d'abord
+
+  if (moisList.length === 0) {
     return `<div class="empty-state"><div class="emoji">📋</div><h3>Aucune saisie</h3><p>Vos feuilles d'heures apparaîtront ici</p></div>`;
   }
+
+  const cfg = {
+    asaisir: { color: 'var(--text3)', icon: '▷', label: 'À saisir' },
+    encours: { color: '#f59e0b',      icon: '⏳', label: 'En cours de validation' },
+    valide:  { color: 'var(--green)', icon: '✓', label: 'Validé' },
+  };
+
   return `<div class="heures-mois-list">
-    ${entries.map(e => {
-      const d = new Date(e.date);
-      const dayNames = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-      const dayLabel = dayNames[d.getDay()] + '. ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,4);
-      const total = e.total || 0;
-      const isValid = e.status === 'validated' || e.status !== 'draft';
-      return `<div class="heures-mois-item ${isValid?'validated':''}">
-        <div class="heures-mois-status-icon ${isValid?'valid':'pending'}">${isValid?'✓':'▷'}</div>
+    ${moisList.map(ym => {
+      const { etat, total } = etatMoisHoraires(initials, ym);
+      const c = cfg[etat];
+      const [y, m] = ym.split('-').map(Number);
+      const nom = MONTHS[m-1] + ' ' + y;
+      const h = Math.floor(total), min = Math.round((total % 1) * 60);
+      return `<div class="heures-mois-item" style="border-left:4px solid ${c.color};">
+        <div class="heures-mois-status-icon" style="color:${c.color};">${c.icon}</div>
         <div class="heures-mois-info">
-          <div class="heures-mois-name">${dayLabel}</div>
-          <div class="heures-mois-status ${isValid?'validated':''}">${isValid?'Validé':'Brouillon'}${e.plages && e.plages.length>1?' · '+e.plages.length+' plages':''}</div>
+          <div class="heures-mois-name">${nom}</div>
+          <div class="heures-mois-status" style="color:${c.color};font-weight:600;">${c.label}</div>
         </div>
-        <div class="heures-mois-total"><span class="icon">⏱</span>${Math.floor(total)}h${String(Math.round((total%1)*60)).padStart(2,'0')}</div>
+        <div class="heures-mois-total"><span class="icon">⏱</span>${h}h${String(min).padStart(2,'0')}</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -6600,83 +6654,6 @@ function openMessageImage(url) {
     <button style="position:absolute;top:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:18px;cursor:pointer;font-weight:700;" onclick="document.getElementById('photo-lightbox').remove()">✕</button>`;
 }
 
-// Visionneuse zoomable pour les photos de rapport (pincer / boutons / double-tap)
-async function openReportPhoto(i) {
-  const p = currentReport && currentReport.photos && currentReport.photos[i];
-  if (!p) return;
-  let url = (p && p.url) || '';
-  if (p && p.path && sbApi && sbApi.signedUrl) {
-    try { url = await sbApi.signedUrl('rapport-photos', p.path, 3600); } catch(_) {}
-  }
-  if (!url) return;
-
-  const prev = document.getElementById('photo-lightbox');
-  if (prev) prev.remove();
-  const lb = document.createElement('div');
-  lb.id = 'photo-lightbox';
-  lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:9999;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;';
-  lb.innerHTML = `
-    <img id="lb-img" src="${url}" alt="" draggable="false" style="max-width:100%;max-height:100%;transform-origin:center center;user-select:none;-webkit-user-select:none;border-radius:6px;">
-    <div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;">
-      <button data-z="out" style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.18);border:none;color:#fff;font-size:26px;line-height:1;cursor:pointer;">\u2212</button>
-      <button data-z="reset" style="height:48px;padding:0 18px;border-radius:24px;background:rgba(255,255,255,.18);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Ajuster</button>
-      <button data-z="in" style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.18);border:none;color:#fff;font-size:24px;line-height:1;cursor:pointer;">+</button>
-    </div>
-    <button data-z="close" style="position:fixed;top:18px;right:18px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:18px;font-weight:700;cursor:pointer;">\u2715</button>`;
-  document.body.appendChild(lb);
-
-  const img = lb.querySelector('#lb-img');
-  let scale = 1, tx = 0, ty = 0;
-  const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; };
-
-  lb.querySelectorAll('button').forEach(b => b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const z = b.getAttribute('data-z');
-    if (z === 'close') return lb.remove();
-    if (z === 'in')  scale = Math.min(scale * 1.4, 6);
-    if (z === 'out') scale = Math.max(scale / 1.4, 1);
-    if (z === 'reset') { scale = 1; tx = 0; ty = 0; }
-    if (scale === 1) { tx = 0; ty = 0; }
-    apply();
-  }));
-
-  img.addEventListener('dblclick', (e) => {
-    e.stopPropagation();
-    if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2.5; }
-    apply();
-  });
-
-  // Souris : glisser pour déplacer quand zoomé
-  let drag = false, lx = 0, ly = 0;
-  img.addEventListener('mousedown', (e) => { if (scale <= 1) return; drag = true; lx = e.clientX; ly = e.clientY; e.preventDefault(); });
-  window.addEventListener('mousemove', (e) => { if (!drag) return; tx += e.clientX - lx; ty += e.clientY - ly; lx = e.clientX; ly = e.clientY; apply(); });
-  window.addEventListener('mouseup', () => { drag = false; });
-
-  // Tactile : pincer pour zoomer, glisser à un doigt pour déplacer quand zoomé
-  let pinch = false, pan = false, d0 = 0, s0 = 1, px = 0, py = 0;
-  img.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) { pinch = true; pan = false; d0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); s0 = scale; }
-    else if (e.touches.length === 1 && scale > 1) { pan = true; px = e.touches[0].clientX; py = e.touches[0].clientY; }
-  }, {passive:false});
-  img.addEventListener('touchmove', (e) => {
-    if (pinch && e.touches.length === 2) {
-      e.preventDefault();
-      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      scale = Math.min(Math.max(s0 * (d / d0), 1), 6);
-      if (scale === 1) { tx = 0; ty = 0; }
-      apply();
-    } else if (pan && e.touches.length === 1) {
-      e.preventDefault();
-      tx += e.touches[0].clientX - px; ty += e.touches[0].clientY - py;
-      px = e.touches[0].clientX; py = e.touches[0].clientY;
-      apply();
-    }
-  }, {passive:false});
-  img.addEventListener('touchend', (e) => { if (e.touches.length === 0) { pinch = false; pan = false; } });
-
-  lb.addEventListener('click', (e) => { if (e.target === lb) lb.remove(); });
-}
-
 function showConvParticipants(convId) {
   const conv = CONVERSATIONS.find(c => c.id === convId);
   if (!conv) return;
@@ -7539,207 +7516,6 @@ function startReportForChantier(id) {
 // ══════════════════════════════════════════════════════
 // NOUVEAU RAPPORT — Formulaire complet
 // ══════════════════════════════════════════════════════
-// == EXPORT PDF D'UN RAPPORT (generation + telechargement direct via jsPDF) ==
-function loadJsPDF() {
-  return new Promise((resolve, reject) => {
-    if (window.jspdf && window.jspdf.jsPDF) return resolve(window.jspdf.jsPDF);
-    const sc = document.createElement('script');
-    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-    sc.onload = () => (window.jspdf && window.jspdf.jsPDF) ? resolve(window.jspdf.jsPDF) : reject(new Error('jsPDF indisponible'));
-    sc.onerror = () => reject(new Error('Echec du chargement de jsPDF'));
-    document.head.appendChild(sc);
-  });
-}
-
-function fetchImageDataURL(url) {
-  return fetch(url)
-    .then(resp => resp.blob())
-    .then(blob => new Promise((res) => {
-      const fr = new FileReader();
-      fr.onload = () => res(fr.result);
-      fr.onerror = () => res(null);
-      fr.readAsDataURL(blob);
-    }))
-    .catch(() => null);
-}
-
-async function exportRapportPDF() {
-  const r = currentReport;
-  if (!r) { showToast('\u26a0 Aucun rapport \u00e0 exporter'); return; }
-  showToast('\ud83d\udcc4 G\u00e9n\u00e9ration du PDF\u2026');
-
-  let JsPDF;
-  try { JsPDF = await loadJsPDF(); }
-  catch (e) { showToast('\u26a0 G\u00e9n\u00e9rateur PDF indisponible (v\u00e9rifie ta connexion)'); return; }
-
-  // Pre-charger les photos (URL signee fraiche -> dataURL)
-  const photoData = [];
-  for (const p of (r.photos || [])) {
-    let url = (p && p.url) || '';
-    if (p && p.path && typeof sbApi !== 'undefined' && sbApi.signedUrl) {
-      try { url = await sbApi.signedUrl('rapport-photos', p.path, 3600); } catch (_) {}
-    }
-    if (url) { const d = await fetchImageDataURL(url); if (d) photoData.push(d); }
-  }
-
-  const ch = r.chantier || {};
-  const equipe = ch.equipe || [];
-  const doc = new JsPDF({ unit: 'mm', format: 'a4' });
-
-  const M = 14, PW = 210, PH = 297, CW = PW - 2 * M, BOTTOM = PH - M;
-  let y = M;
-  const ensure = (h) => { if (y + h > BOTTOM) { doc.addPage(); y = M; } };
-  const font = (size, style, color) => {
-    doc.setFont('helvetica', style || 'normal');
-    doc.setFontSize(size);
-    const c = color || [26, 29, 35];
-    doc.setTextColor(c[0], c[1], c[2]);
-  };
-  const heading = (txt) => {
-    ensure(11);
-    font(10, 'bold', [37, 99, 235]);
-    doc.text(String(txt).toUpperCase(), M, y);
-    y += 1.8;
-    doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3);
-    doc.line(M, y, M + CW, y);
-    y += 5;
-  };
-  const paragraph = (txt) => {
-    font(10.5, 'normal');
-    doc.splitTextToSize(String(txt), CW).forEach(line => { ensure(6); doc.text(line, M, y); y += 5; });
-    y += 2;
-  };
-  const table = (headers, rows, widths) => {
-    const rh = 7;
-    ensure(rh);
-    doc.setFillColor(241, 245, 249); doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2);
-    doc.rect(M, y, CW, rh, 'FD');
-    font(9, 'bold');
-    let x = M;
-    headers.forEach((h, idx) => { doc.text(String(h), x + 2, y + rh - 2.5); x += widths[idx]; });
-    y += rh;
-    font(9, 'normal');
-    rows.forEach(row => {
-      ensure(rh);
-      doc.setDrawColor(229, 231, 235);
-      doc.rect(M, y, CW, rh);
-      x = M;
-      row.forEach((cell, idx) => {
-        const right = (idx >= headers.length - 2);
-        const lines = doc.splitTextToSize(String(cell), widths[idx] - 3);
-        if (right) doc.text(lines[0] || '', x + widths[idx] - 2, y + rh - 2.5, { align: 'right' });
-        else doc.text(lines[0] || '', x + 2, y + rh - 2.5);
-        x += widths[idx];
-      });
-      y += rh;
-    });
-    y += 3;
-  };
-
-  // En-tete
-  font(20, 'bold');
-  doc.text('MOURON & FILS', M, y + 3);
-  font(8, 'normal', [107, 114, 128]);
-  doc.text('B\u00c2TIMENT \u00b7 TRAVAUX PUBLICS', M, y + 8);
-  const titre = r.rapportId ? ('Rapport ' + r.rapportId) : "Rapport d'intervention";
-  const dateStr = (r.date && typeof r.date === 'string') ? r.date : new Date().toLocaleDateString('fr-FR');
-  font(13, 'bold');
-  doc.text(titre, PW - M, y + 3, { align: 'right' });
-  font(9, 'normal', [107, 114, 128]);
-  doc.text('\u00c9dit\u00e9 le ' + dateStr, PW - M, y + 8, { align: 'right' });
-  y += 13;
-  doc.setDrawColor(37, 99, 235); doc.setLineWidth(0.8); doc.line(M, y, M + CW, y);
-  y += 7;
-
-  // Meta
-  font(10, 'normal');
-  doc.text('Client : ' + (ch.client || '\u2014'), M, y);
-  doc.text('R\u00e9f\u00e9rence : ' + (ch.ref || '\u2014'), M + CW / 2, y);
-  y += 6;
-  doc.splitTextToSize('Adresse : ' + (ch.addr || '\u2014'), CW).forEach(l => { doc.text(l, M, y); y += 6; });
-  y += 3;
-
-  // Sections texte
-  if (r.symptomes) { heading('Sympt\u00f4mes'); paragraph(r.symptomes); }
-  if (r.diagnostic) { heading('Diagnostic'); paragraph(r.diagnostic); }
-  if (r.effectues) { heading('Travaux effectu\u00e9s'); paragraph(r.effectues); }
-  if (r.prevoirIntervention || r.prevoirDevis) {
-    heading('Travaux \u00e0 pr\u00e9voir');
-    font(10.5, 'normal');
-    if (r.prevoirIntervention) { ensure(6); doc.text('\u2022  Pr\u00e9voir une autre intervention', M, y); y += 5; }
-    if (r.prevoirDevis) { ensure(6); doc.text('\u2022  Pr\u00e9voir un devis', M, y); y += 5; }
-    y += 2;
-  }
-
-  // Heures
-  const hRows = [];
-  equipe.forEach(t => {
-    const tech = (typeof EQUIPE_MAP !== 'undefined' && EQUIPE_MAP[t]) || { n: t, role: '' };
-    const h = (r.heures && r.heures[t]) || {};
-    if (h.start || h.end) hRows.push([tech.n, tech.role || '', h.start || '\u2014', h.end || '\u2014']);
-  });
-  if (hRows.length) { heading('Heures par intervenant'); table(['Intervenant', 'R\u00f4le', 'Arriv\u00e9e', 'D\u00e9part'], hRows, [62, 58, 31, 31]); }
-
-  // Articles
-  const aRows = []; let total = 0;
-  (r.articles || []).forEach(a => {
-    const qty = Number(a.qty) || 0, price = Number(a.price) || 0, lt = qty * price;
-    total += lt;
-    aRows.push([a.name || '', String(qty), price.toFixed(2) + ' \u20ac', lt.toFixed(2) + ' \u20ac']);
-  });
-  if (aRows.length) {
-    heading('Articles / Mat\u00e9riel');
-    table(['Article / Mat\u00e9riel', 'Qt\u00e9', 'PU', 'Total'], aRows, [88, 22, 36, 36]);
-    font(10, 'bold');
-    ensure(6); doc.text('Total : ' + total.toFixed(2) + ' \u20ac', M + CW, y, { align: 'right' }); y += 7;
-  }
-
-  // Photos
-  if (photoData.length) {
-    heading('Photos');
-    const gap = 4, cols = 2, pw = (CW - gap) / cols, ph = pw * 0.7;
-    let col = 0;
-    photoData.forEach(d => {
-      if (col === 0) ensure(ph + gap);
-      const px = M + col * (pw + gap);
-      const fmt = d.indexOf('image/png') >= 0 ? 'PNG' : 'JPEG';
-      try { doc.addImage(d, fmt, px, y, pw, ph); } catch (_) {}
-      col++;
-      if (col >= cols) { col = 0; y += ph + gap; }
-    });
-    if (col !== 0) y += ph + gap;
-    y += 2;
-  }
-
-  // Signatures
-  if (r.signatureTech || r.signatureClient || r.commentaireTech || r.commentaireClient) {
-    ensure(52);
-    heading('Signatures');
-    const colW = (CW - 8) / 2;
-    const sigStart = y;
-    const drawSig = (x, label, img, comment) => {
-      let yy = sigStart;
-      font(9, 'bold', [107, 114, 128]);
-      doc.text(String(label).toUpperCase(), x, yy); yy += 5;
-      if (comment) {
-        font(9, 'normal');
-        doc.splitTextToSize(String(comment), colW).slice(0, 4).forEach(l => { doc.text(l, x, yy); yy += 4.5; });
-        yy += 2;
-      }
-      if (img) { try { doc.addImage(img, 'PNG', x, yy, Math.min(colW, 58), 24); } catch (_) {} yy += 26; }
-      else { font(9, 'italic', [156, 163, 175]); doc.text('Non sign\u00e9', x, yy); yy += 6; }
-      return yy;
-    };
-    const yA = drawSig(M, 'Technicien', r.signatureTech, r.commentaireTech);
-    const yB = drawSig(M + colW + 8, 'Client', r.signatureClient, r.commentaireClient);
-    y = Math.max(yA, yB) + 3;
-  }
-
-  const fname = ('Rapport_' + (r.rapportId || dateStr)).replace(/[^\w\-]+/g, '_') + '.pdf';
-  doc.save(fname);
-  showToast('\u2705 PDF t\u00e9l\u00e9charg\u00e9');
-}
-
 function renderNouveauRapport(div) {
   const r = currentReport;
   const ro = r.readonly;
@@ -7839,7 +7615,7 @@ function renderNouveauRapport(div) {
           ${r.photos.map((p,i)=>{
             const isImg = p && (p.path || p.url);
             const inner = isImg
-              ? `<img src="${(p&&p.url)||''}" data-photo-idx="${i}" alt="${(p&&p.name)||''}" onclick="openReportPhoto(${i})" style="width:100%;height:100%;object-fit:cover;border-radius:8px;background:#eee;cursor:zoom-in;">`
+              ? `<img src="${(p&&p.url)||''}" data-photo-idx="${i}" alt="${(p&&p.name)||''}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;background:#eee;">`
               : `<span style="font-size:26px;">${typeof p==='string'?p:'📷'}</span>`;
             return `<div class="photo-tile">${inner}${!ro?`<button class="photo-tile-remove" onclick="removePhoto(${i})">✕</button>`:''}</div>`;
           }).join('')}
@@ -7927,7 +7703,7 @@ function renderNouveauRapport(div) {
           <textarea class="report-input" placeholder="Commentaires du technicien..." ${ro?'readonly':''} oninput="currentReport.commentaireTech=this.value">${r.commentaireTech||''}</textarea>
         </div>
         <label class="report-label">Signature</label>
-        <div class="sig-canvas-wrap ${r.signatureTech?'has-signature':'empty'}" id="sig-tech-wrap">
+        <div class="sig-canvas-wrap empty" id="sig-tech-wrap">
           <canvas class="sig-canvas" id="sig-tech"></canvas>
         </div>
         ${!ro?`<div class="sig-actions">
@@ -7957,7 +7733,7 @@ function renderNouveauRapport(div) {
           <textarea class="report-input" placeholder="Commentaires du client..." ${ro?'readonly':''} oninput="currentReport.commentaireClient=this.value">${r.commentaireClient||''}</textarea>
         </div>
         <label class="report-label">Signature du client</label>
-        <div class="sig-canvas-wrap ${r.signatureClient?'has-signature':'empty'}" id="sig-client-wrap">
+        <div class="sig-canvas-wrap empty" id="sig-client-wrap">
           <canvas class="sig-canvas" id="sig-client"></canvas>
         </div>
         ${!ro?`<div class="sig-actions">
@@ -7976,7 +7752,7 @@ function renderNouveauRapport(div) {
       <button class="report-btn-primary" onclick="submitRapport('termine')">✓ J'ai terminé l'intervention</button>
       <button class="report-btn-secondary" onclick="submitRapport('partiel')">Je n'ai pas terminé l'intervention</button>
     </div>` : `<div class="report-final-actions">
-      <button class="report-btn-primary" onclick="exportRapportPDF()">📄 Exporter en PDF</button>
+      <button class="report-btn-primary" onclick="showToast('📄 Rapport exporté en PDF')">📄 Exporter en PDF</button>
       ${['gerant','charge','comptable'].includes(currentUser.role)?`<button class="report-btn-secondary" onclick="showToast('✓ Rapport validé')">✓ Valider le rapport</button>`:''}
     </div>`}
   </div>`;
@@ -8391,23 +8167,6 @@ function initSignatureCanvas(id) {
   resizeObserver.observe(c);
 
   sigState[id] = { ctx, canvas: c, dataURL: null, hasContent: false, resizeObserver };
-
-  // Restaurer une signature déjà enregistrée (réouverture d'un rapport signé)
-  const savedSig = id === 'sig-tech'   ? (currentReport && currentReport.signatureTech)
-                 : id === 'sig-client' ? (currentReport && currentReport.signatureClient)
-                 : null;
-  if (savedSig) {
-    sigState[id].dataURL = savedSig;
-    sigState[id].hasContent = true;
-    const restore = () => {
-      const rect = c.getBoundingClientRect();
-      if (rect.width === 0) { requestAnimationFrame(restore); return; }
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
-      img.src = savedSig;
-    };
-    restore();
-  }
 }
 
 function updateSigStatus(id) {
