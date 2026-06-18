@@ -5356,8 +5356,13 @@ function setHeuresTab(tab) {
   renderPage('mes-horaires');
 }
 
-// ══ ÉTAPE 5 — Vue compta : détail des heures d'une personne + validation mensuelle ══
+// ══ ÉTAPES 5/6/7 — Vue compta : détail des heures, contrôle jour par jour, validation, signalement ══
+let _comptaDetailInitials = null;   // membre dont le détail est ouvert
+let _comptaMoisOuvert = null;       // mois (YYYY-MM) actuellement déplié
+
 function ouvrirDetailHeuresCompta(initials) {
+  _comptaDetailInitials = initials;
+  _comptaMoisOuvert = null;
   const m = TEAM_FULL[initials] || {};
   const nameEl = document.getElementById('hdp-name');
   const subEl  = document.getElementById('hdp-sub');
@@ -5366,6 +5371,11 @@ function ouvrirDetailHeuresCompta(initials) {
   _renderDetailHeuresComptaBody(initials);
   document.getElementById('heures-detail-panel').classList.add('open');
   document.getElementById('heures-detail-overlay').classList.add('open');
+}
+
+function toggleMoisDetail(ym) {
+  _comptaMoisOuvert = (_comptaMoisOuvert === ym) ? null : ym;
+  if (_comptaDetailInitials) _renderDetailHeuresComptaBody(_comptaDetailInitials);
 }
 
 function fermerDetailHeuresCompta() {
@@ -5392,6 +5402,7 @@ function _renderDetailHeuresComptaBody(initials) {
   body.innerHTML = `
     <div class="d-section">
       <div class="d-section-title">Feuilles d'heures par mois</div>
+      <div style="font-size:11px;color:var(--text3);margin:-4px 0 10px;">Touchez un mois pour voir le détail jour par jour, contrôler, puis valider.</div>
       ${moisList.map(ym => {
         const { etat, total } = etatMoisHoraires(initials, ym);
         const c = cfg[etat];
@@ -5400,26 +5411,94 @@ function _renderDetailHeuresComptaBody(initials) {
         const h = Math.floor(total), min = Math.round((total % 1) * 60);
         const v = (VALIDATIONS_MOIS[initials] && VALIDATIONS_MOIS[initials][ym]) || null;
         const hasEntries = entries.some(e => (e.date || '').slice(0,7) === ym);
+        const isOpen = _comptaMoisOuvert === ym;
+        const sousTitre = (etat === 'valide' && v && v.by) ? `Validé par ${v.by}` : c.label;
+
         let action = '';
         if (etat === 'valide') {
-          action = `<button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;" onclick="devaliderMoisCompta('${initials}','${ym}')">Annuler la validation</button>`;
+          action = `<button class="btn btn-ghost btn-sm" style="width:100%;" onclick="devaliderMoisCompta('${initials}','${ym}')">Annuler la validation</button>`;
         } else if (hasEntries) {
-          action = `<button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;" onclick="validerMoisCompta('${initials}','${ym}')">✓ Valider le mois</button>`;
+          action = `<button class="btn btn-primary btn-sm" style="width:100%;" onclick="validerMoisCompta('${initials}','${ym}')">✓ Valider le mois</button>`;
         }
-        const sousTitre = (etat === 'valide' && v && v.by) ? `Validé par ${v.by}` : c.label;
-        return `<div style="border:1px solid var(--border);border-left:4px solid ${c.color};border-radius:var(--radius-sm);padding:12px;margin-bottom:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
+
+        return `<div style="border:1px solid var(--border);border-left:4px solid ${c.color};border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden;">
+          <div onclick="toggleMoisDetail('${ym}')" style="display:flex;justify-content:space-between;align-items:center;padding:12px;cursor:pointer;">
             <div>
               <div style="font-size:14px;font-weight:700;">${nom}</div>
               <div style="font-size:11px;color:${c.color};font-weight:600;">${c.icon} ${sousTitre}</div>
             </div>
-            <div style="font-size:13px;font-weight:700;color:var(--text2);">${h}h${String(min).padStart(2,'0')}</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="font-size:13px;font-weight:700;color:var(--text2);">${h}h${String(min).padStart(2,'0')}</div>
+              <span style="display:inline-block;font-size:12px;color:var(--text3);transform:rotate(${isOpen?'90deg':'0deg'});transition:transform .15s;">▸</span>
+            </div>
           </div>
-          ${action}
+          ${isOpen ? `<div>${_renderJoursMois(initials, ym)}</div>
+          <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);">
+            ${action}
+            ${hasEntries ? `<button class="btn btn-ghost btn-sm" style="width:100%;" onclick="signalerErreurSaisie('${initials}','${ym}')">✉️ Signaler une erreur</button>` : ''}
+          </div>` : ''}
         </div>`;
       }).join('')}
       ${moisList.length === 0 ? `<div style="color:var(--text3);font-size:13px;">Aucune saisie</div>` : ''}
     </div>`;
+}
+
+// Détail jour par jour d'un mois (pour le contrôle compta)
+function _renderJoursMois(initials, ym) {
+  const jours = (HORAIRES_PERSO[initials] || [])
+    .filter(e => (e.date || '').slice(0,7) === ym)
+    .sort((a,b) => (a.date || '').localeCompare(b.date || ''));
+  if (jours.length === 0) return `<div style="padding:10px 12px;color:var(--text3);font-size:12px;">Aucune journée saisie ce mois.</div>`;
+  const dayNames = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  return jours.map(e => {
+    const d = new Date(e.date);
+    const dLabel = `${dayNames[d.getDay()]}. ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,4)}`;
+    const plages = (e.plages || []).filter(p => p && p.start && p.end).map(p => `${p.start}–${p.end}`).join(', ') || '—';
+    const tot = Number(e.total) || 0;
+    const h = Math.floor(tot), min = Math.round((tot % 1) * 60);
+    const isAbs = ['absence','conge','congé','maladie'].includes(e.type);
+    const statut = isAbs ? (e.type === 'absence' ? 'Absence' : 'Congé') : (e.status === 'validated' ? 'Validé' : 'Brouillon');
+    const statColor = isAbs ? 'var(--text3)' : (e.status === 'validated' ? 'var(--green)' : '#f59e0b');
+    const extra = [e.panier ? '🧺 panier' : '', e.lieu ? '📍 ' + e.lieu : ''].filter(Boolean).join(' · ');
+    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:8px 12px;border-top:1px solid var(--border);background:var(--bg);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:600;">${dLabel}</div>
+        <div style="font-size:11px;color:var(--text3);">${plages}${extra ? ' · ' + extra : ''}</div>
+      </div>
+      <div style="text-align:right;white-space:nowrap;">
+        <div style="font-size:12px;font-weight:700;">${h}h${String(min).padStart(2,'0')}</div>
+        <div style="font-size:10px;color:${statColor};font-weight:600;">${statut}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Étape 7 — ouvrir (ou créer) une conversation 1to1 avec le salarié et pré-remplir un signalement
+function signalerErreurSaisie(initials, ym) {
+  const me = (currentUser && currentUser.initials) || '';
+  const m = TEAM_FULL[initials] || {};
+  const prenom = (m.fullName || initials).split(' ')[0];
+  const [y, mo] = ym.split('-').map(Number);
+  const moisNom = MONTHS[mo-1] + ' ' + y;
+  let conv = CONVERSATIONS.find(c => c.type === '1to1' && c.participants.includes(me) && c.participants.includes(initials) && c.participants.length === 2);
+  if (!conv) {
+    conv = { id: 'c' + Date.now(), type: '1to1', participants: [me, initials].sort(), messages: [] };
+    CONVERSATIONS.push(conv);
+    DataStore.save();
+    CloudStore.saveConversation(conv);
+  }
+  fermerDetailHeuresCompta();
+  openConversation(conv.id);
+  const template = `Bonjour ${prenom}, en vérifiant tes heures de ${moisNom}, je crois qu'il y a une erreur de saisie. Peux-tu vérifier et corriger si besoin ? Merci 🙏`;
+  setTimeout(() => {
+    const input = document.getElementById('conv-input');
+    if (input) {
+      input.value = template;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      input.focus();
+    }
+  }, 200);
 }
 
 async function validerMoisCompta(initials, ym) {
