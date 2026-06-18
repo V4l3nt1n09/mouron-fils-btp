@@ -1916,6 +1916,19 @@ textarea.report-input{resize:vertical;min-height:90px;font-family:'Inter',sans-s
 </div>
 
 <!-- DETAIL PANEL -->
+<div class="detail-overlay" id="heures-detail-overlay" onclick="fermerDetailHeuresCompta()"></div>
+<div class="detail-panel" id="heures-detail-panel">
+  <div class="detail-header">
+    <div class="detail-header-top">
+      <button class="detail-back" onclick="fermerDetailHeuresCompta()" title="Retour"><span style="font-size:18px;">←</span></button>
+      <span class="badge" style="background:rgba(255,255,255,.2);color:#fff;font-size:10px;">Heures</span>
+      <button class="detail-close" onclick="fermerDetailHeuresCompta()">✕</button>
+    </div>
+    <div class="detail-client-name" id="hdp-name">—</div>
+    <div class="detail-ref" id="hdp-sub">—</div>
+  </div>
+  <div class="detail-body" id="hdp-body"></div>
+</div>
 <div class="detail-overlay" id="detail-overlay" onclick="closeDetail()"></div>
 <div class="detail-panel" id="detail-panel">
   <div class="detail-header">
@@ -4512,7 +4525,7 @@ function renderHeures(div) {
       <div class="ht-cell">${h.mois}h</div>
       <div class="ht-cell">${h.contrat}h/sem</div>
       <div class="ht-cell ${h.supp>0?'blue':''}">${h.supp>0?'+'+h.supp+'h':'—'}</div>
-      <div class="ut-actions"><div class="tbl-btn" onclick="showToast('📋 Détail heures ${h.name}')">📋</div></div>
+      <div class="ut-actions"><div class="tbl-btn" onclick="ouvrirDetailHeuresCompta('${h.initials}')">📋</div></div>
     </div>`).join('')}
   </div>
 
@@ -5341,6 +5354,101 @@ function renderHeuresHistorique(initials) {
 function setHeuresTab(tab) {
   heuresViewTab = tab;
   renderPage('mes-horaires');
+}
+
+// ══ ÉTAPE 5 — Vue compta : détail des heures d'une personne + validation mensuelle ══
+function ouvrirDetailHeuresCompta(initials) {
+  const m = TEAM_FULL[initials] || {};
+  const nameEl = document.getElementById('hdp-name');
+  const subEl  = document.getElementById('hdp-sub');
+  if (nameEl) nameEl.textContent = m.fullName || initials;
+  if (subEl)  subEl.textContent = m.role || '';
+  _renderDetailHeuresComptaBody(initials);
+  document.getElementById('heures-detail-panel').classList.add('open');
+  document.getElementById('heures-detail-overlay').classList.add('open');
+}
+
+function fermerDetailHeuresCompta() {
+  document.getElementById('heures-detail-panel').classList.remove('open');
+  document.getElementById('heures-detail-overlay').classList.remove('open');
+}
+
+function _renderDetailHeuresComptaBody(initials) {
+  const body = document.getElementById('hdp-body');
+  if (!body) return;
+  const entries = HORAIRES_PERSO[initials] || [];
+  const now = new Date();
+  const curYm = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const moisSet = new Set(entries.map(e => (e.date || '').slice(0,7)).filter(Boolean));
+  moisSet.add(curYm);
+  const moisList = Array.from(moisSet).sort((a,b) => b.localeCompare(a));
+
+  const cfg = {
+    asaisir: { color:'var(--text3)', icon:'▷', label:'À saisir' },
+    encours: { color:'#f59e0b',      icon:'⏳', label:'En cours de validation' },
+    valide:  { color:'var(--green)', icon:'✓', label:'Validé' },
+  };
+
+  body.innerHTML = `
+    <div class="d-section">
+      <div class="d-section-title">Feuilles d'heures par mois</div>
+      ${moisList.map(ym => {
+        const { etat, total } = etatMoisHoraires(initials, ym);
+        const c = cfg[etat];
+        const [y, mo] = ym.split('-').map(Number);
+        const nom = MONTHS[mo-1] + ' ' + y;
+        const h = Math.floor(total), min = Math.round((total % 1) * 60);
+        const v = (VALIDATIONS_MOIS[initials] && VALIDATIONS_MOIS[initials][ym]) || null;
+        const hasEntries = entries.some(e => (e.date || '').slice(0,7) === ym);
+        let action = '';
+        if (etat === 'valide') {
+          action = `<button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;" onclick="devaliderMoisCompta('${initials}','${ym}')">Annuler la validation</button>`;
+        } else if (hasEntries) {
+          action = `<button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;" onclick="validerMoisCompta('${initials}','${ym}')">✓ Valider le mois</button>`;
+        }
+        const sousTitre = (etat === 'valide' && v && v.by) ? `Validé par ${v.by}` : c.label;
+        return `<div style="border:1px solid var(--border);border-left:4px solid ${c.color};border-radius:var(--radius-sm);padding:12px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-size:14px;font-weight:700;">${nom}</div>
+              <div style="font-size:11px;color:${c.color};font-weight:600;">${c.icon} ${sousTitre}</div>
+            </div>
+            <div style="font-size:13px;font-weight:700;color:var(--text2);">${h}h${String(min).padStart(2,'0')}</div>
+          </div>
+          ${action}
+        </div>`;
+      }).join('')}
+      ${moisList.length === 0 ? `<div style="color:var(--text3);font-size:13px;">Aucune saisie</div>` : ''}
+    </div>`;
+}
+
+async function validerMoisCompta(initials, ym) {
+  const by = (currentUser && currentUser.initials) || '';
+  try {
+    await sbApi.upsert('feuilles_validation',
+      { member_initials: initials, mois: ym, validated_by: by, validated_at: new Date().toISOString() },
+      'member_initials,mois');
+    if (!VALIDATIONS_MOIS[initials]) VALIDATIONS_MOIS[initials] = {};
+    VALIDATIONS_MOIS[initials][ym] = { by, at: new Date().toISOString() };
+    _renderDetailHeuresComptaBody(initials);
+    showToast('✅ Mois validé');
+  } catch (e) {
+    console.error('Validation mois échec', e.message || e);
+    showToast('⚠ Échec de la validation');
+  }
+}
+
+async function devaliderMoisCompta(initials, ym) {
+  if (!confirm('Annuler la validation de ce mois ?')) return;
+  try {
+    await sbApi.delete('feuilles_validation', { member_initials: initials, mois: ym });
+    if (VALIDATIONS_MOIS[initials]) delete VALIDATIONS_MOIS[initials][ym];
+    _renderDetailHeuresComptaBody(initials);
+    showToast('Validation annulée');
+  } catch (e) {
+    console.error('Dé-validation échec', e.message || e);
+    showToast('⚠ Échec de l\'annulation');
+  }
 }
 
 // ══ PAGE DE SAISIE D'UNE JOURNÉE ══
