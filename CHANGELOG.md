@@ -1,7 +1,7 @@
 # 📋 Récap complet du projet MOURON & FILS
 
-> Document généré le 15 mai 2026  
-> Point d'étape avant la suite du développement
+> Document mis à jour le 18 juin 2026  
+> Point d'étape — workflow heures & rapports finalisés
 
 ---
 
@@ -10,7 +10,7 @@
 **Objectif** : Créer une application web/PWA de gestion BTP pour la SARL Mouron & Fils, accessible depuis tous les appareils (iPhone, Android, PC, Mac).
 
 **Démarrage** : 25 avril 2026  
-**État actuel** : v0.1.0 alpha, en ligne sur GitHub Pages, prête pour phase de test
+**État actuel** : **v0.5.0 beta**, en ligne sur GitHub Pages, sécurisée (Auth + RLS par rôle), en phase de test interne
 
 **URL** : https://v4l3nt1n09.github.io/mouron-fils-btp/
 
@@ -27,97 +27,113 @@
 | 12 mai 2026 | Déploiement | GitHub Pages activé, app en ligne |
 | 14 mai 2026 | Devis Interfast | Suppression module Devis, intégration Interfast |
 | 15 mai 2026 | Crédits | Page À propos + footer crédits |
+| Mai–juin 2026 | **Sécurisation** | Auth Supabase + persistance de session + RLS réelle par rôle (fin des policies « Allow all ») |
+| Mai–juin 2026 | **Heures dynamiques** | Migration vers `feuilles_heures`, chargement de l'équipe depuis la base |
+| 12 juin 2026 | Validation pipeline heures | Vérification écriture/lecture des heures, identification des bugs prioritaires |
+| 14 juin 2026 | **Système de rapports** | Réparation bout-en-bout + photos Supabase Storage + corrections de bugs |
+| 18 juin 2026 | **Validation des heures (compta)** | Workflow de validation mensuelle + détail jour par jour + correctif messagerie |
 
 ---
 
-## ✅ Modules fonctionnels (14)
+## 🆕 Nouveautés majeures depuis la v0.1.0
+
+### 🔐 Sécurité — Auth + RLS par rôle
+- **Authentification Supabase** active (email / mot de passe) + **persistance de session** (reconnexion automatique).
+- Le **JWT de l'utilisateur** est porté dans toutes les requêtes (lecture/écriture conformes à son rôle).
+- **RLS réécrite** : fin des policies temporaires « Allow all », remplacées par de vraies règles par rôle sur chaque table.
+- Fonctions SQL `SECURITY DEFINER` : `get_user_role()`, `get_user_initials()`, `is_user_admin()`.
+- 🐞 **Bug critique corrigé** : `get_user_role()` lisait la mauvaise colonne (`role` au lieu de `role_key`), ce qui faisait échouer **silencieusement** la plupart des policies pour les non-admins.
+
+### 📝 Système de rapports — réparé de bout en bout
+- **Saisie** : symptômes, diagnostic, travaux effectués, commentaires technicien/client (tous correctement enregistrés).
+- **Persistance** : chaque rapport finalisé est enregistré et réapparaît dans « Mes Rapports » après rechargement.
+- **Consultation** en lecture seule : signatures redessinées, commentaires, heures, photos.
+- **Photos réelles** → bucket **privé** Supabase Storage `rapport-photos`, affichées via **URL signées** temporaires (1 h).
+- Règle métier : **1 rapport = 1 journée** ; le rapport du dernier jour (avec signature client) **clôt le chantier**.
+
+### ⏱️ Heures — workflow de validation par la compta (façon Interfast)
+- **Saisie d'une journée** : plages multiples, total, panier, lieu, statut brouillon / validé par le salarié.
+- Liste **« À saisir » en continu** : tous les jours ouvrés non remplis du dernier mois (≈30 j).
+- Onglet **Historique par mois** avec **3 états** : 🔘 À saisir · ⏳ En cours de validation · ✅ Validé.
+- **Validation au niveau du mois** par la compta (nouvelle table `feuilles_validation`) :
+  - vue compta (bouton 📋) → **détail jour par jour** (date, plages, total, statut, panier/lieu),
+  - bouton **« Valider le mois »** → bascule en « Validé » côté compta **et** côté salarié,
+  - bouton **« Signaler une erreur »** → ouvre une conversation pré-remplie avec le salarié concerné.
+- 🔒 **Garantie RLS** : un salarié ne peut **pas** s'auto-confirmer un mois (INSERT réservé compta/gérant/admin).
+
+### 📦 Supabase Storage
+- Bucket **privé** `rapport-photos` (10 Mo max, images uniquement) + policies (lecture/écriture authentifiées).
+- Accès aux fichiers via **URL signées** (jamais d'URL publique).
+
+---
+
+## ✅ Modules fonctionnels
 
 ### 🔐 Authentification
-- Login avec sélection user dans liste (24 profils en optgroups)
-- Mot de passe libre (démo, sera sécurisé à l'étape Auth Supabase)
-- Écran "invitation reçue" pour démo
-- 7 rôles distincts avec permissions différenciées
+- Connexion Supabase Auth (email / mot de passe) + persistance de session
+- 7 rôles distincts avec permissions différenciées (appliquées par la RLS)
 
-### 👥 Gestion utilisateurs (Gérant uniquement)
-- Tableau des membres + invitations en attente
-- Matrice visuelle des permissions par rôle
+### 👥 Gestion utilisateurs (Gérant)
+- Tableau des membres + matrice visuelle des permissions par rôle
+- Équipe chargée **dynamiquement** depuis Supabase (plus de liste en dur)
 
 ### 📅 Planning / Calendrier
-- Vue Mois + Vue Semaine
-- Couleur des événements par STATUT
+- Vue Mois + Vue Semaine, couleur par STATUT
 - Tabs : Aujourd'hui / En retard / À venir
+- Les chantiers **terminés** sont masqués du planning
 
 ### 📋 Chantiers
-- Cards avec client/ref/travaux/adresse/équipe/badge statut
-- Panneau détail latéral avec flèche retour + swipe back
+- Cards client/ref/travaux/adresse/équipe/badge statut + panneau détail latéral (swipe back)
 - 4 statuts : Planifié, En cours, Finition, Terminé
-- Description + PDF + Photos + Notes
-- **Filtres avancés** : par client, équipe, devis, tri, reset
-- **Empty states** illustrés
-- **Badge devis** : 🟢 Devis joint / 🟡 Devis manquant
-- Création multi-dates non consécutives
+- Onglets fonctionnels **En cours / Retard / Terminés** (les terminés sont rangés à part)
+- Filtres avancés, empty states, badge devis 🟢/🟡, création multi-dates
 
 ### ➕ Création d'intervention (Gérant/Chargé/Secrétaire)
-- Client EXISTANT ou NOUVEAU
-- Référence auto (IN00100, IN00101...)
-- Type de travaux + Description + Upload PDF multiples
-- Photos : Caméra + Galerie
-- Équipe multi-sélection (3 catégories)
-- **💰 Section Devis Interfast** (N° + Date + Montant + PDF)
-- Calendrier multi-dates avec pills
+- Client existant ou nouveau, référence auto (IN00100…)
+- Type + description + PDF, photos (caméra/galerie), équipe multi-sélection
+- 💰 Section Devis Interfast (N° + Date + Montant + PDF), calendrier multi-dates
 
 ### 👷 Mon Planning (Ouvrier/Chef/Dépanneur)
-- Ouvrier : vue jour/semaine SIMPLE
-- Chef/Dépanneur : + boutons 🗺 GPS, 📞 Appel, 📝 Rapport
-- Bouton chronomètre ⏱ Heures
+- Ouvrier : vue simple ; Chef/Dépanneur : + 🗺 GPS, 📞 Appel, 📝 Rapport, ⏱ Heures
 
-### 📝 Rapports d'intervention (Chef/Dépanneur)
-- Symptômes / Diagnostic / Travaux effectués
-- "Prévoir intervention" / "Prévoir devis"
+### 📝 Rapports d'intervention (Chef/Dépanneur) — ✅ complet
+- Symptômes / Diagnostic / Travaux + commentaires technicien & client
 - Cerfa / PV réception / Attestation TVA 10%
-- Photos + Articles + Heures par technicien
-- **Signature technicien + client** (canvas tactile, Apple Pencil compatible)
-- "J'ai terminé" → bascule auto chantier en Terminé
-- **Confirmation** avant finalisation
+- Photos (Supabase Storage), articles, heures par technicien
+- **Signature technicien + client** (canvas tactile, Apple Pencil)
+- Consultation en lecture seule fidèle (signatures, photos, commentaires)
+- « J'ai terminé » → bascule auto du chantier en Terminé + confirmation
 
-### ⏰ Feuilles d'heures (style Interfast)
-- Onglets Résumé/Historique
-- Plages multiples, astreinte
+### ⏰ Feuilles d'heures (style Interfast) — ✅ workflow de validation
+- Onglets Résumé (« à saisir ») / Historique (par mois, 3 états)
+- Plages multiples, panier, lieu, brouillon / validé
+- **Validation mensuelle par la compta** (voir Nouveautés majeures)
 
-### 📊 Heures personnel (Comptable + Gérant)
-- Vue d'ensemble par technicien
+### 📊 Heures personnel (Comptable + Gérant) — ✅ contrôle & validation
+- Vue d'ensemble par collaborateur (semaine / mois / contrat / heures supp.)
+- 📋 **Détail jour par jour** d'un mois → contrôler, signaler une erreur, valider
 
 ### 👥 Équipes
-- Fiches complètes avec habilitations
-- Filtres, modal détail
-- Planning "Qui est où"
-- **Liens cliquables** : téléphones (tel:), emails (mailto:), adresses (Plans/Maps)
+- Fiches complètes + habilitations, filtres, modal détail, planning « Qui est où »
+- Liens cliquables : téléphones (tel:), emails (mailto:), adresses (Plans/Maps)
 
 ### 💬 Messagerie hiérarchique
 - 1à1 + groupes manuels + groupes par chantier
-- Texte + Photos + PDF + Notes vocales
-- **Règles hiérarchiques** : Ouvrier → uniquement chefs/dépanneurs/admin
-- Badge non-lus, bulles style WhatsApp
+- Texte + Photos + PDF + Notes vocales, badge non-lus, bulles façon WhatsApp
+- **100 % privée** : accès limité aux participants (aucun accès admin), garanti par la RLS
+- 🐞 **Correctif** : la RLS attendait des types `'duo'/'groupe'` alors que l'app utilise `'1to1'/'group'/'chantier'` → la création de conversation était **bloquée pour tous les non-admins**
 
 ### 📎 Documents Interfast
-- Page centralisée avec stats globales (devis liés, total TTC, sans devis)
-- Onglet Devis + Onglet Factures (à venir)
-- Recherche par n° / client / chantier
-- Liste cliquable → ouvre directement le chantier
-- Bouton "Ouvrir PDF" direct
+- Page centralisée + stats (devis liés, total TTC, sans devis)
+- Onglet Devis (+ Factures à venir), recherche, liste cliquable → chantier, « Ouvrir PDF »
 
 ### 💾 Sauvegarde
-- Persistance localStorage
-- Synchronisation Supabase (REST API native)
-- Page de gestion (export, import, reset, stats)
-- **Sauvegarde groupée** (batch save toutes les 5 sec)
+- Persistance localStorage + synchronisation Supabase (REST API native)
+- Chargement robuste `safeGet` (une table en échec ne fait plus basculer l'app hors-ligne)
+- Page de gestion (export, import, reset, stats), sauvegarde groupée (batch)
 
 ### ℹ️ À propos
-- Page dédiée avec hero coloré
-- Cards équipe de dev (Valentin + Claude)
-- Stack technique
-- Démarche du projet
-- Remerciements
+- Hero coloré, cards équipe de dev (Valentin + Claude), stack, démarche, remerciements
 
 ---
 
@@ -138,136 +154,114 @@
 ## 🎨 Améliorations UX réalisées
 
 ### Navigation
-- 🔙 Bouton retour dans header
-- 👈 Swipe back depuis le bord (geste iOS)
-- ☰ Menu burger mobile (bug fix critique)
-- 📜 Historique de navigation
-- ⌨️ Raccourci Cmd+K pour recherche globale
+- 🔙 Bouton retour, 👈 swipe back (iOS), ☰ menu burger mobile, 📜 historique, ⌨️ Cmd+K
 
 ### Visuel
-- ✨ Animations cards (fadeInUp, hover)
-- 🍞 Toasts redesignés (rebond, opacity)
-- 🔘 Boutons : rebond au tap
-- 🎭 Empty states illustrés
-- ⏳ Spinners de chargement
+- ✨ Animations cards, 🍞 toasts redesignés, 🔘 rebond au tap, 🎭 empty states, ⏳ spinners
+- 🖼️ Lightbox photo (pinch-zoom, pan, double-tap, boutons zoom)
 
 ### Fonctionnalités UX
-- 🔍 Recherche globale (chantiers, clients, équipe, rapports)
-- 🎛️ Filtres avancés sur Chantiers
-- 📞 Liens cliquables (téléphone, email, adresse)
-- 📅 Format dates FR (relative + absolue)
-- ⚠️ Confirmations destructives (modal)
-- 🔄 Pull-to-refresh
+- 🔍 Recherche globale, 🎛️ filtres avancés, 📞 liens cliquables, 📅 dates FR, ⚠️ confirmations, 🔄 pull-to-refresh
+- 🧾 Export PDF d'un rapport (jsPDF, client-side)
 
 ### Mode sombre
-- ❌ **Abandonné** après tests (palette claire préférée pour BTP en plein soleil)
+- ❌ **Abandonné** (palette claire préférée pour le BTP en plein soleil)
 
 ---
 
 ## ☁️ Infrastructure technique
 
 ### Stack
-- **Frontend** : HTML / CSS / JavaScript (vanilla)
+- **Frontend** : HTML / CSS / JavaScript (vanilla), fichier unique `index.html`
 - **Base de données** : Supabase (PostgreSQL + REST API)
-- **Auth** : Supabase Auth (à activer)
+- **Stockage fichiers** : Supabase Storage (bucket privé + URL signées)
+- **Auth** : Supabase Auth (email / mot de passe) ✅ actif
 - **Hébergement** : GitHub Pages (HTTPS)
-- **Dev** : Mac + iPad
+- **Dev** : Mac + iPad (cible de compatibilité : iPad Safari)
+- **PDF** : jsPDF (CDN, génération client-side)
 
 ### Supabase
-- ✅ Projet actif (région Paris eu-west-3)
-- ✅ Plan Free
-- ✅ 9 tables créées : team_members, clients, chantiers, events_cal, rapports, horaires, conversations, messages, invitations
-- ⚠️ RLS activé avec policies "Allow all" temporaires (à sécuriser)
-- ✅ Connexion via fetch natif (sbApi) — SDK officiel abandonné après bugs iPad Safari
+- ✅ Projet actif (région Paris eu-west-3), plan Free
+- ✅ **10 tables** : `team_members`, `clients`, `chantiers`, `events_cal`, `rapports`, `feuilles_heures`, `feuilles_validation`, `intervention_horaires`, `conversations`, `messages`
+- ✅ **RLS réelle par rôle** sur toutes les tables (fin des policies « Allow all »)
+- ✅ **Storage** : bucket privé `rapport-photos` (10 Mo, images) + policies authentifiées
+- ✅ Connexion via fetch natif (`sbApi`) — SDK officiel abandonné (bugs iPad Safari)
+- ℹ️ Table `invitations` **supprimée** (ancien mécanisme d'invitation)
 
 ### Git / GitHub
-- ✅ Repo : V4l3nt1n09/mouron-fils-btp
-- ✅ README complet avec auteurs
-- ✅ Personal Access Token configuré
-- ✅ Push depuis MacBook opérationnel
-- ✅ GitHub Pages actif
+- ✅ Repo : V4l3nt1n09/mouron-fils-btp · README complet · PAT configuré · GitHub Pages actif
+- Workflow : édition → upload via l'interface GitHub → sync (~1 min) → test (Cmd+Shift+R)
 
 ---
 
 ## 🎯 Décisions stratégiques importantes
 
 ### ✅ Maintenues
-- **Stack HTML/CSS/JS vanilla** plutôt que Next.js (apprentissage progressif)
-- **Supabase** pour la base + auth (gratuit + auto-hébergeable plus tard)
+- Stack **HTML/CSS/JS vanilla** (apprentissage progressif)
+- **Supabase** pour base + auth + stockage
 - **Co-crédit** Valentin + Claude (Anthropic)
+- **Messagerie 100 % privée** : aucun accès admin aux conversations (décision définitive)
+- **Logo original** conservé (toute refonte abandonnée — décision du gérant)
 
 ### ❌ Abandonnées
-- **Module Devis** complet (problèmes légaux/normes BTP, on garde Interfast pour ça)
-- **Mode sombre** (préférence pour mode clair en plein soleil)
-- **Migration vers Next.js** (réécriture trop lourde, sécurité possible avec RLS)
-- **SDK Supabase officiel** (DataCloneError sur iPad)
+- Module Devis complet (normes BTP → on garde Interfast)
+- Mode sombre · Migration Next.js · SDK Supabase officiel
 
 ### 🔄 En discussion
-- **API Interfast** : intéressant mais pas urgent, à voir après stabilisation
-- **Auto-hébergement Supabase** : envisagé sur OVH/Hetzner dans 6-12 mois
+- API Interfast (après stabilisation) · Auto-hébergement Supabase (6–12 mois)
+- Accès en écriture à Notion (à traiter dans une session dédiée)
 
 ---
 
 ## 🚧 Ce qui reste à faire
 
-### 🔴 Priorité HAUTE (avant phase test)
-- 🔐 **Sécurisation Supabase Auth + RLS** (2-3h focus)
-  - Authentification email/mot de passe
-  - Policies par rôle pour chaque table
-  - Système d'invitation par email
-  - Mot de passe oublié
-
 ### 🟠 Priorité MOYENNE
-- 📱 **PWA installable** (30 min)
-  - Manifeste + icônes
-  - Service Worker basique
-  - "Ajouter à l'écran d'accueil"
-- 🔧 **Ajout devis sur chantier existant** (modifier devis a posteriori)
-- 👋 **Tutoriel premier login** (onboarding)
+- 📦 **Centraliser les photos sur Storage** :
+  - brancher les photos **d'interventions** ;
+  - créer un **bucket séparé et privé** pour les photos de **messages** (accès limité aux participants) — *ne pas* réutiliser `rapport-photos` (confidentialité de la messagerie).
+- 🐞 **Bug latent `saveInvitation`** : vise encore la table `invitations` supprimée (cassera à l'ajout d'un vrai membre).
+- 🔢 **Cohérence du numéro de version** : reporter `v0.5.0 beta` dans README / footer / page À propos.
+- 📱 **PWA installable** (manifeste + icônes + service worker).
+- 🧹 Finitions **Phase 5** : email réel de Thomas Vialens, suppression des derniers tableaux en dur.
 
-### 🟢 Priorité BASSE (après phase test)
-- 📦 **Supabase Storage** pour vrais fichiers cloud (au lieu de base64)
-- 🔔 **Notifications** (temps réel, push, emails)
-- 📊 **Tableau de bord enrichi**
-- 💰 **Module Factures** (préparé dans la page Documents)
-- 🌐 **API Interfast** (si décision validée)
+### 🟢 Priorité BASSE
+- 🗜️ Compression des photos avant upload (pour la 4G)
+- 🔔 Notifications (temps réel / push / email)
+- 📊 Tableau de bord enrichi · 💰 Module Factures · 🌐 API Interfast
 
 ---
 
 ## 📊 Stats du projet
 
-- **Lignes de code** : ~8 500
-- **Taille fichier** : ~390 Ko
-- **Modules fonctionnels** : 14
+- **Lignes de code** : ~9 000
+- **Modules fonctionnels** : 16+
 - **Rôles utilisateurs** : 7
 - **Membres équipe** : 24
-- **Sessions de développement** : 6
-- **Commits Git** : ~5 (depuis déploiement)
-- **Push GitHub** : 4
+- **Tables Supabase** : 10
+- **Sessions de développement** : ~12
 
 ---
 
 ## 🏆 Réussites notables
 
-- ✅ App **fonctionnelle de bout en bout**
-- ✅ **Mickael a validé** le concept
-- ✅ **Cloud opérationnel** (Supabase synchronisé)
-- ✅ **Déployée publiquement** sur GitHub Pages
-- ✅ **Workflow Git** maîtrisé
-- ✅ **Bug critique** sidebar mobile corrigé
-- ✅ **Approche pragmatique** sur les devis (intégration Interfast au lieu de recréer)
+- ✅ App **fonctionnelle de bout en bout** et **sécurisée** (Auth + RLS par rôle)
+- ✅ **Système de rapports** complet (saisie → consultation → photos cloud)
+- ✅ **Workflow de validation des heures** par la compta (contrôle → correction → validation)
+- ✅ **Photos sur Supabase Storage** (bucket privé + URL signées)
+- ✅ **Mickael a validé** le concept · **Cloud opérationnel** · **Déployée** sur GitHub Pages
+- ✅ Plusieurs **bugs critiques** corrigés (RLS rôle, hors-ligne silencieux, messagerie)
 
 ---
 
 ## 💡 Points de vigilance pour la suite
 
-1. **Phase de test** : commencer petit (Valentin + Mickael + 1-2 autres)
-2. **Sécurisation** : OBLIGATOIRE avant ouverture à plus de personnes
-3. **Stockage** : surveiller la consommation Supabase (PDF en base64)
-4. **Backup** : penser à exporter régulièrement les données
-5. **Documentation** : noter chaque bug et idée pendant la phase test
+1. **Phase de test** : élargir progressivement (Valentin + Mickael + compta + quelques-uns).
+2. **Stockage** : surveiller la consommation Supabase (migrer le base64 restant vers Storage).
+3. **Backup** : exporter régulièrement les données.
+4. **Confidentialité messagerie** : maintenir le principe « zéro accès admin » dans toute évolution.
+5. **Documentation** : continuer à noter chaque bug et idée pendant la phase test.
 
 ---
 
-*Document généré pour faire le point avant de continuer le développement.*  
+*Document mis à jour pour faire le point sur l'avancement.*  
 *Co-développé par Valentin Mouron et Claude (Anthropic).*
