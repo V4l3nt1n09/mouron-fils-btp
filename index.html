@@ -2999,7 +2999,8 @@ let EVENTS_CAL = [];
 const TYPE_COLOR = {encours:'#93c5fd',retard:'#fca5a5',planifie:'#d1d5db',finition:'#6ee7b7',visite:'#c4b5fd'};
 const TYPE_DARK  = {encours:'#1d4ed8',retard:'#b91c1c',planifie:'#374151',finition:'#065f46',visite:'#5b21b6'};
 const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-const TODAY = {d:22,m:4,y:2025};
+const _td = new Date();
+const TODAY = {d: _td.getDate(), m: _td.getMonth() + 1, y: _td.getFullYear()};
 
 const EQUIPE_MAP = {
   // Gérant
@@ -3550,10 +3551,10 @@ const DataStore = {
 // ══ STATE ══
 let currentUser = null;
 let currentPage = '';
-let calYear=2025, calMonth=4, calView='month';
-let weekStart = getWeekStart(2025,4,22);
+let calYear=TODAY.y, calMonth=TODAY.m, calView='month';
+let weekStart = getWeekStart(TODAY.y,TODAY.m,TODAY.d);
 let workerView = 'day';
-let workerDay = new Date(2025,3,22);
+let workerDay = new Date();
 let inviteMethod = 'email';
 let modalAction = null;
 
@@ -4361,7 +4362,7 @@ function renderDashboard(div) {
     <div class="kpi-box orange"><div class="kpi-num">${CLIENTS_DB.length}</div><div class="kpi-lbl">Clients</div></div>
     <div class="kpi-box red"><div class="kpi-num">${CHANTIERS.filter(c=>c.type==='retard').length}</div><div class="kpi-lbl">En retard</div></div>
   </div>
-  <div class="section-title">Aujourd'hui — 22 avril 2025</div>
+  <div class="section-title">Aujourd'hui — ${new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</div>
   ${CHANTIERS.slice(0,4).map(c=>cardHTML(c)).join('')}`;
   div.querySelectorAll('.if-card').forEach((el,i) => { el.onclick=()=>openDetail(CHANTIERS[i]); });
 }
@@ -4734,8 +4735,8 @@ function renderWorkerWeek(container, chantiers) {
   }).join('')}`;
 }
 
-function changeWorkerDay(d){if(d===0)workerDay=new Date(2025,3,22);else workerDay.setDate(workerDay.getDate()+d);renderPage('mon-planning');}
-function changeWorkerWeek(d){if(d===0)workerDay=new Date(2025,3,22);else workerDay.setDate(workerDay.getDate()+d*7);renderPage('mon-planning');}
+function changeWorkerDay(d){if(d===0)workerDay=new Date();else workerDay.setDate(workerDay.getDate()+d);renderPage('mon-planning');}
+function changeWorkerWeek(d){if(d===0)workerDay=new Date();else workerDay.setDate(workerDay.getDate()+d*7);renderPage('mon-planning');}
 function selectWorkerDay(y,m,d){workerDay=new Date(y,m,d);renderPage('mon-planning');}
 
 // ── MES CHANTIERS (Chef d'équipe) ──
@@ -6444,7 +6445,7 @@ function getUnreadCount(conv) {
 
 function formatMessageTime(iso) {
   const d = new Date(iso);
-  const now = new Date(2025, 3, 22, 15, 0); // simulé
+  const now = new Date();
   const diff = now - d;
   const sameDay = d.toDateString() === now.toDateString();
   if (sameDay) {
@@ -6642,8 +6643,9 @@ function renderMessagesHTML(conv) {
     const d = new Date(m.time);
     const dateStr = d.toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'});
     if (dateStr !== lastDate) {
-      const today = new Date(2025, 3, 22).toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'});
-      const yesterday = new Date(2025, 3, 21).toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'});
+      const today = new Date().toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'});
+      const _yst = new Date(); _yst.setDate(_yst.getDate() - 1);
+      const yesterday = _yst.toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'});
       const sepLabel = dateStr === today ? "Aujourd'hui" : dateStr === yesterday ? 'Hier' : dateStr;
       html += `<div class="msg-day-sep">— ${sepLabel} —</div>`;
       lastDate = dateStr;
@@ -7382,7 +7384,7 @@ function renderDonnees(div) {
 // ══════════════════════════════════════════════════════
 // ÉQUIPES — Fiches techniciens + planning par personne
 // ══════════════════════════════════════════════════════
-let equipeWeekStart = getWeekStart(2025, 4, 22);
+let equipeWeekStart = getWeekStart(TODAY.y, TODAY.m, TODAY.d);
 
 function renderEquipes(div) {
   const canEdit = ['gerant','charge','chef-equipe','depanneur','secretaire'].includes(currentUser.role);
@@ -7551,7 +7553,7 @@ function weekPlanningHTML(members) {
 }
 
 function changeEquipeWeek(dir) {
-  if (dir === 0) equipeWeekStart = getWeekStart(2025, 4, 22);
+  if (dir === 0) equipeWeekStart = getWeekStart(TODAY.y, TODAY.m, TODAY.d);
   else equipeWeekStart.setDate(equipeWeekStart.getDate() + dir * 7);
   renderPage('equipes');
 }
