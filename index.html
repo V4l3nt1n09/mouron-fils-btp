@@ -2361,7 +2361,7 @@ const CloudStore = {
       HORAIRES_PERSO[r.member_initials].push({
         date: r.date,
         plages: r.plages || [],
-        panier: r.panier || false,
+        panier: r.panier || '',
         lieu: r.lieu || '',
         status: r.status,
         total: Number(r.total) || 0,
@@ -2590,7 +2590,8 @@ const CloudStore = {
         member_initials: initials,
         date: entry.date,
         plages: entry.plages || [],
-        panier: entry.panier || false,
+        panier: entry.panier || '',
+        lieu: entry.lieu || '',
         status: entry.status,
         total: entry.total || 0,
         notes: entry.notes || '',
@@ -2838,7 +2839,8 @@ const CloudStore = {
       member_initials: initials,
       date: entry.date,
       plages: entry.plages || [],
-      panier: entry.panier || false,
+      panier: entry.panier || '',
+      lieu: entry.lieu || '',
       status: entry.status,
       total: entry.total || 0,
       notes: entry.notes || '',
@@ -4553,10 +4555,26 @@ function renderHeures(div) {
       ${entries.length === 0
         ? `<div style="padding:14px 16px;font-size:12px;color:var(--text3);text-align:center;">Aucune saisie personnelle</div>`
         : entries.slice(0,5).map((e,i) => horaireRowReadonlyHTML(e)).join('') +
-          (entries.length > 5 ? `<div style="padding:10px 16px;font-size:12px;text-align:center;color:var(--blue);cursor:pointer;font-weight:600;" onclick="showToast('📋 Voir l\\'historique complet de ${u.name}')">Voir les ${entries.length - 5} entrées suivantes →</div>` : '')
+          (entries.length > 5 ? `<div id="more-${u.initials}" style="display:none;">${entries.slice(5).map(e => horaireRowReadonlyHTML(e)).join('')}</div><div style="padding:10px 16px;font-size:12px;text-align:center;color:var(--blue);cursor:pointer;font-weight:600;" onclick="toggleHistoriqueComplet('${u.initials}', this)">Voir les ${entries.length - 5} entrées suivantes →</div>` : '')
       }
     </div>`;
   }).join('')}`;
+}
+
+// Libellé lisible du panier
+function panierLabel(p) {
+  if (p === 'oui') return '🍽️ Panier repas';
+  if (p === 'grand') return '🚐 Grand déplacement';
+  return 'Aucun panier';
+}
+
+// Déplie / replie l'historique complet d'un collaborateur (vue compta)
+function toggleHistoriqueComplet(initials, btn) {
+  const more = document.getElementById('more-' + initials);
+  if (!more) return;
+  const isHidden = more.style.display === 'none';
+  more.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? 'Réduire ↑' : `Voir les ${more.children.length} entrées suivantes →`;
 }
 
 // Version lecture seule pour le comptable (sans bouton supprimer)
@@ -4585,7 +4603,8 @@ function horaireRowReadonlyHTML(e) {
     </div>
     <div class="hr-hours">
       <div class="hr-hours-range">${rangeTxt}${typeBadge}</div>
-      ${e.notes && e.type==='travail' ? `<div class="hr-hours-notes">${e.notes}</div>` : ''}
+      ${e.type==='travail' ? `<div class="hr-hours-notes">${(e.lieu ? '📍 ' + e.lieu + ' · ' : '') + panierLabel(e.panier)}</div>` : ''}
+      ${e.notes && e.type==='travail' ? `<div class="hr-hours-notes">📝 ${e.notes}</div>` : ''}
     </div>
     <div class="hr-total ${e.type!=='travail'?'absence':''}">${e.total ? e.total.toFixed(1)+'h' : '—'}</div>
   </div>`;
@@ -5459,7 +5478,7 @@ function _renderJoursMois(initials, ym) {
     const isAbs = ['absence','conge','congé','maladie'].includes(e.type);
     const statut = isAbs ? (e.type === 'absence' ? 'Absence' : 'Congé') : (e.status === 'validated' ? 'Validé' : 'Brouillon');
     const statColor = isAbs ? 'var(--text3)' : (e.status === 'validated' ? 'var(--green)' : '#f59e0b');
-    const extra = [e.panier ? '🧺 panier' : '', e.lieu ? '📍 ' + e.lieu : ''].filter(Boolean).join(' · ');
+    const extra = [e.lieu ? '📍 ' + e.lieu : '', panierLabel(e.panier)].filter(Boolean).join(' · ');
     return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:8px 12px;border-top:1px solid var(--border);background:var(--bg);">
       <div style="flex:1;min-width:0;">
         <div style="font-size:12px;font-weight:600;">${dLabel}</div>
