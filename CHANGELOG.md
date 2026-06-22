@@ -10,7 +10,7 @@
 **Objectif** : Créer une application web/PWA de gestion BTP pour la SARL Mouron & Fils, accessible depuis tous les appareils (iPhone, Android, PC, Mac).
 
 **Démarrage** : 25 avril 2026  
-**État actuel** : **v0.5.0 beta**, en ligne sur GitHub Pages, sécurisée (Auth + RLS par rôle), en phase de test interne
+**État actuel** : **v0.5.0 alpha**, en ligne sur GitHub Pages, sécurisée (Auth + RLS par rôle), en phase de test interne
 
 **URL** : https://v4l3nt1n09.github.io/mouron-fils-btp/
 
@@ -220,7 +220,6 @@
   - brancher les photos **d'interventions** ;
   - créer un **bucket séparé et privé** pour les photos de **messages** (accès limité aux participants) — *ne pas* réutiliser `rapport-photos` (confidentialité de la messagerie).
 - 🐞 **Bug latent `saveInvitation`** : vise encore la table `invitations` supprimée (cassera à l'ajout d'un vrai membre).
-- 🔢 **Cohérence du numéro de version** : reporter `v0.5.0 beta` dans README / footer / page À propos.
 - 📱 **PWA installable** (manifeste + icônes + service worker).
 - 🧹 Finitions **Phase 5** : email réel de Thomas Vialens, suppression des derniers tableaux en dur.
 
