@@ -5579,13 +5579,13 @@ function supprimerPlage(idx) {
 function ouvrirEditPlage(idx) {
   syncSaisieFromDOM();
   const p = saisieJour.plages[idx];
-  document.getElementById('modal-title').textContent = '⏱ Modifier la plage horaire';
-  document.getElementById('modal-sub').textContent = 'Précisez l\'heure de début et de fin';
-  document.getElementById('modal-confirm').textContent = 'Enregistrer';
-  document.getElementById('modal-confirm').className = 'btn btn-primary';
-  modalAction = 'edit-plage-' + idx;
-
-  document.getElementById('modal-body').innerHTML = `
+  openModal({
+    title: '⏱ Modifier la plage horaire',
+    sub: 'Précisez l\'heure de début et de fin',
+    confirmText: 'Enregistrer',
+    confirmClass: 'btn btn-primary',
+    action: 'edit-plage-' + idx,
+    body: `
   <div class="plage-edit-row">
     <div class="plage-edit-field">
       <label>Heure de début</label>
@@ -5595,8 +5595,8 @@ function ouvrirEditPlage(idx) {
       <label>Heure de fin</label>
       <input type="time" id="plage-end" value="${p.end}">
     </div>
-  </div>`;
-  document.getElementById('modal-overlay').classList.add('open');
+  </div>`
+  });
 }
 
 function syncSaisieFromDOM() {
@@ -6781,13 +6781,14 @@ function showConvParticipants(convId) {
     </div>` : '';
   }).join('');
 
-  document.getElementById('modal-title').textContent = '👥 Participants';
-  document.getElementById('modal-sub').textContent = conv.participants.length + ' membre(s)';
-  document.getElementById('modal-confirm').textContent = 'Fermer';
-  document.getElementById('modal-confirm').className = 'btn btn-ghost';
-  modalAction = 'close-only';
-  document.getElementById('modal-body').innerHTML = `<div class="contact-list">${list}</div>`;
-  document.getElementById('modal-overlay').classList.add('open');
+  openModal({
+    title: '👥 Participants',
+    sub: conv.participants.length + ' membre(s)',
+    confirmText: 'Fermer',
+    confirmClass: 'btn btn-ghost',
+    action: 'close-only',
+    body: `<div class="contact-list">${list}</div>`
+  });
 }
 
 // ── Création de nouvelle conversation ──
@@ -6800,13 +6801,14 @@ function openNewConversationModal() {
   newConvParticipants = [];
   newConvName = '';
 
-  document.getElementById('modal-title').textContent = '＋ Nouvelle conversation';
-  document.getElementById('modal-sub').textContent = 'Choisissez un destinataire ou créez un groupe';
-  document.getElementById('modal-confirm').textContent = 'Démarrer';
-  document.getElementById('modal-confirm').className = 'btn btn-primary';
-  modalAction = 'create-conversation';
   renderNewConvBody();
-  document.getElementById('modal-overlay').classList.add('open');
+  openModal({
+    title: '＋ Nouvelle conversation',
+    sub: 'Choisissez un destinataire ou créez un groupe',
+    confirmText: 'Démarrer',
+    confirmClass: 'btn btn-primary',
+    action: 'create-conversation'
+  });
 }
 
 function renderNewConvBody() {
@@ -7469,25 +7471,23 @@ function openTeamDetail(initials) {
   if (!m) return;
   const canEdit = ['gerant','charge','chef-equipe','depanneur','secretaire'].includes(currentUser.role);
 
-  document.getElementById('modal-title').textContent = '👤 Fiche ' + m.fullName;
-  document.getElementById('modal-sub').textContent = m.role;
-  document.getElementById('modal-confirm').textContent = canEdit ? 'Modifier' : 'Fermer';
-  document.getElementById('modal-confirm').className = canEdit ? 'btn btn-primary' : 'btn btn-ghost';
-  modalAction = canEdit ? 'edit-member' : 'view-member';
   modalMemberInitials = initials;
-
   // Calcul ancienneté
   const start = new Date(m.contractStart);
   const now = new Date();
   const years = Math.floor((now - start) / (365.25 * 24 * 3600 * 1000));
   const months = Math.floor(((now - start) / (30.44 * 24 * 3600 * 1000)) % 12);
-
   // Formatter date naissance
   const bd = new Date(m.birthDate);
   const age = Math.floor((now - bd) / (365.25 * 24 * 3600 * 1000));
   const bdStr = bd.getDate() + ' ' + MONTHS[bd.getMonth()] + ' ' + bd.getFullYear();
-
-  document.getElementById('modal-body').innerHTML = `
+  openModal({
+    title: '👤 Fiche ' + m.fullName,
+    sub: m.role,
+    confirmText: canEdit ? 'Modifier' : 'Fermer',
+    confirmClass: canEdit ? 'btn btn-primary' : 'btn btn-ghost',
+    action: canEdit ? 'edit-member' : 'view-member',
+    body: `
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border);">
     <div class="eq-detail-photo" style="background:${m.bg};">${m.initials}</div>
     <div>
@@ -7539,9 +7539,8 @@ function openTeamDetail(initials) {
         </div>`;
       }).join('')}
     </div>
-  </div>`;
-
-  document.getElementById('modal-overlay').classList.add('open');
+  </div>`
+  });
 }
 
 let modalMemberInitials = null;
@@ -7551,14 +7550,14 @@ function openTeamMemberModal(initials = null) {
   const isEdit = !!initials;
   const m = isEdit ? TEAM_FULL[initials] : null;
 
-  document.getElementById('modal-title').textContent = isEdit ? '✏️ Modifier le membre' : '＋ Ajouter un membre';
-  document.getElementById('modal-sub').textContent = isEdit ? 'Modifier les informations de ' + m.fullName : 'Renseignez les informations du nouveau membre';
-  document.getElementById('modal-confirm').textContent = isEdit ? 'Enregistrer' : 'Créer la fiche';
-  document.getElementById('modal-confirm').className = 'btn btn-primary';
-  modalAction = isEdit ? 'save-member' : 'create-member';
   modalMemberInitials = initials;
-
-  document.getElementById('modal-body').innerHTML = `
+  openModal({
+    title: isEdit ? '✏️ Modifier le membre' : '＋ Ajouter un membre',
+    sub: isEdit ? 'Modifier les informations de ' + m.fullName : 'Renseignez les informations du nouveau membre',
+    confirmText: isEdit ? 'Enregistrer' : 'Créer la fiche',
+    confirmClass: 'btn btn-primary',
+    action: isEdit ? 'save-member' : 'create-member',
+    body: `
   <div class="form-row">
     <div class="form-group"><label class="form-label">Prénom</label><input class="form-input" type="text" id="tm-fn" value="${m?m.firstName:''}" placeholder="Prénom"></div>
     <div class="form-group"><label class="form-label">Nom</label><input class="form-input" type="text" id="tm-ln" value="${m?m.lastName:''}" placeholder="Nom"></div>
@@ -7609,8 +7608,8 @@ function openTeamMemberModal(initials = null) {
   </div>
   <div class="form-group" style="background:var(--blue-light);border:1px solid rgba(58,111,216,.2);padding:10px 12px;border-radius:var(--radius-sm);">
     <div style="font-size:11px;color:var(--blue);">📨 ${isEdit?'Les modifications seront appliquées immédiatement':'Une invitation sera envoyée par email pour activer le compte'}</div>
-  </div>`;
-  document.getElementById('modal-overlay').classList.add('open');
+  </div>`
+  });
 }
 
 function startReportForChantier(id) {
@@ -8615,11 +8614,12 @@ function saveDetailChanges() {
 // MODALS
 // ══════════════════════════════════════════════════════
 function openInviteModal() {
-  document.getElementById('modal-title').textContent = '＋ Inviter un membre';
-  document.getElementById('modal-sub').textContent = 'Un lien de création de mot de passe sera envoyé automatiquement.';
-  document.getElementById('modal-confirm').textContent = 'Envoyer l\'invitation';
-  modalAction = 'invite';
-  document.getElementById('modal-body').innerHTML = `
+  openModal({
+    title: '＋ Inviter un membre',
+    sub: 'Un lien de création de mot de passe sera envoyé automatiquement.',
+    confirmText: 'Envoyer l\'invitation',
+    action: 'invite',
+    body: `
   <div class="form-row">
     <div class="form-group"><label class="form-label">Prénom</label><input class="form-input" type="text" id="inv-prenom" placeholder="Prénom"></div>
     <div class="form-group"><label class="form-label">Nom</label><input class="form-input" type="text" id="inv-nom" placeholder="Nom"></div>
@@ -8644,8 +8644,8 @@ function openInviteModal() {
   </div>
   <div style="background:var(--blue-light);border:1px solid rgba(58,111,216,.2);border-radius:var(--radius-sm);padding:12px 14px;font-size:12px;color:var(--blue);margin-top:4px;">
     🔒 La personne recevra un lien unique valable 48h pour créer son mot de passe et activer son compte.
-  </div>`;
-  document.getElementById('modal-overlay').classList.add('open');
+  </div>`
+  });
 }
 
 function setInvMethod(m) {
@@ -8657,11 +8657,12 @@ function setInvMethod(m) {
 function openEditRoleModal(key) {
   const u = USERS_DB[key];
   const cfg = ROLE_CONFIG[u.role];
-  document.getElementById('modal-title').textContent = 'Modifier le rôle';
-  document.getElementById('modal-sub').textContent = `Utilisateur : ${u.name}`;
-  document.getElementById('modal-confirm').textContent = 'Enregistrer';
-  modalAction = 'edit-role';
-  document.getElementById('modal-body').innerHTML = `
+  openModal({
+    title: 'Modifier le rôle',
+    sub: `Utilisateur : ${u.name}`,
+    confirmText: 'Enregistrer',
+    action: 'edit-role',
+    body: `
   <div class="form-group"><label class="form-label">Rôle actuel</label>
     <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:var(--radius-sm);">
       <div class="s-av" style="background:${cfg.color};width:28px;height:28px;font-size:10px;">${u.initials}</div>
@@ -8679,24 +8680,39 @@ function openEditRoleModal(key) {
   </div>
   <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:var(--radius-sm);padding:12px 14px;font-size:12px;color:#92400e;">
     ⚠️ Le changement de rôle modifiera immédiatement les accès de cet utilisateur.
-  </div>`;
-  document.getElementById('modal-overlay').classList.add('open');
+  </div>`
+  });
 }
 
 function openRevokeModal(name) {
-  document.getElementById('modal-title').textContent = 'Révoquer l\'accès';
-  document.getElementById('modal-sub').textContent = '';
-  document.getElementById('modal-confirm').textContent = 'Révoquer';
-  document.getElementById('modal-confirm').className = 'btn btn-danger';
-  modalAction = 'revoke';
-  document.getElementById('modal-body').innerHTML = `
+  openModal({
+    title: 'Révoquer l\'accès',
+    sub: '',
+    confirmText: 'Révoquer',
+    confirmClass: 'btn btn-danger',
+    action: 'revoke',
+    body: `
   <div style="background:#fdedec;border:1px solid #fca5a5;border-radius:var(--radius-sm);padding:16px;font-size:13px;color:var(--red);text-align:center;">
     <div style="font-size:24px;margin-bottom:8px;">🚫</div>
     <strong>Êtes-vous sûr de vouloir révoquer l'accès de ${name} ?</strong><br>
     <span style="font-size:12px;color:var(--text2);margin-top:6px;display:block;">Cette action désactivera immédiatement son compte. Elle peut être annulée en le réinvitant.</span>
-  </div>`;
+  </div>`
+  });
+}
+
+// ── 🪟 Ouvre la modale principale (#modal-overlay) en un appel ──
+// Champs omis = non modifiés. confirmClass revient à 'btn btn-primary' par
+// défaut (comportement identique à l'ancien, réinitialisé par closeModal).
+function openModal({ title, sub, confirmText, confirmClass = 'btn btn-primary', action, body } = {}) {
+  if (title       !== undefined) document.getElementById('modal-title').textContent   = title;
+  if (sub         !== undefined) document.getElementById('modal-sub').textContent     = sub;
+  if (confirmText !== undefined) document.getElementById('modal-confirm').textContent = confirmText;
+  document.getElementById('modal-confirm').className = confirmClass;
+  if (action      !== undefined) modalAction = action;
+  if (body        !== undefined) document.getElementById('modal-body').innerHTML = body;
   document.getElementById('modal-overlay').classList.add('open');
 }
+
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
