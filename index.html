@@ -3730,36 +3730,6 @@ function activateAccount() {
 // 🎨 UTILITAIRES UX (mode sombre, dates, confirmations, liens)
 // ══════════════════════════════════════════════════════
 
-// ── 📅 Format dates en français ("il y a X heures") ──
-function formatRelativeTime(dateInput) {
-  if (!dateInput) return '';
-  const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
-  if (isNaN(d.getTime())) return String(dateInput);
-  const now = new Date();
-  const diffMs = now - d;
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffH = Math.floor(diffMin / 60);
-  const diffD = Math.floor(diffH / 24);
-
-  if (diffSec < 60) return "à l'instant";
-  if (diffMin < 60) return `il y a ${diffMin} min`;
-  if (diffH < 24) return `il y a ${diffH} h`;
-  if (diffD < 7) return `il y a ${diffD} j`;
-  // Sinon, date complète
-  return d.toLocaleDateString('fr-FR', { day:'numeric', month:'short', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
-}
-
-function formatDateFR(dateInput, opts = {}) {
-  const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
-  if (isNaN(d.getTime())) return String(dateInput);
-  return d.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: opts.long ? 'long' : 'short',
-    year: 'numeric',
-  });
-}
-
 // ── ⚠️ Modal de confirmation pour actions destructives ──
 function confirmAction({ title, message, confirmText = 'Confirmer', cancelText = 'Annuler', danger = false, onConfirm }) {
   // Supprime tout modal de confirmation existant
@@ -3786,16 +3756,7 @@ function confirmAction({ title, message, confirmText = 'Confirmer', cancelText =
   };
 }
 
-// ── 📞 Liens cliquables (téléphone, email, adresse) ──
-function makePhoneLink(phone) {
-  if (!phone) return '';
-  const cleaned = String(phone).replace(/[^\d+]/g, '');
-  return `<a href="tel:${cleaned}" class="link-phone" onclick="event.stopPropagation()">${phone}</a>`;
-}
-function makeEmailLink(email) {
-  if (!email) return '';
-  return `<a href="mailto:${email}" class="link-email" onclick="event.stopPropagation()">${email}</a>`;
-}
+// ── 📍 Lien cliquable (adresse → Plans / Maps) ──
 function makeAddressLink(address) {
   if (!address) return '';
   const encoded = encodeURIComponent(address);
@@ -3974,62 +3935,6 @@ function emptyState({ icon, title, message, actionLabel, actionFn }) {
       ${message ? `<div class="empty-state-message">${message}</div>` : ''}
       ${actionLabel && actionFn ? `<button class="btn-primary empty-state-btn" onclick="${actionFn}">${actionLabel}</button>` : ''}
     </div>`;
-}
-
-// ══════════════════════════════════════════════════════
-// ⏳ SPINNERS DE CHARGEMENT
-// ══════════════════════════════════════════════════════
-function showSpinner(target = 'content-area', message = 'Chargement...') {
-  const el = (typeof target === 'string') ? document.getElementById(target) : target;
-  if (!el) return;
-  el.innerHTML = `
-    <div class="loading-spinner-wrap">
-      <div class="loading-spinner"></div>
-      <div class="loading-spinner-text">${message}</div>
-    </div>`;
-}
-
-// ══════════════════════════════════════════════════════
-// 👆 SWIPE LATÉRAL SUR CARDS (menu rapide)
-// ══════════════════════════════════════════════════════
-// Activé via la classe `swipeable` sur la card
-function attachCardSwipe(cardEl, actions) {
-  if (!cardEl || cardEl._swipeAttached) return;
-  cardEl._swipeAttached = true;
-  let startX = 0, startY = 0, currentX = 0, swiping = false, swipeStartT = 0;
-
-  cardEl.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) return;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    swipeStartT = Date.now();
-    swiping = false;
-  }, { passive: true });
-
-  cardEl.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - startX;
-    const dy = Math.abs(e.touches[0].clientY - startY);
-    if (Math.abs(dx) > 10 && dy < 30) {
-      swiping = true;
-      currentX = dx;
-      // Limit swipe à -100px (gauche)
-      const tx = Math.max(Math.min(dx, 0), -100);
-      cardEl.style.transform = `translateX(${tx}px)`;
-    }
-  }, { passive: true });
-
-  cardEl.addEventListener('touchend', () => {
-    if (!swiping) return;
-    if (currentX < -50) {
-      cardEl.style.transform = 'translateX(-90px)';
-      cardEl.classList.add('swiped');
-    } else {
-      cardEl.style.transform = '';
-      cardEl.classList.remove('swiped');
-    }
-    swiping = false;
-  });
 }
 
 function initPullToRefresh() {
@@ -8790,23 +8695,6 @@ function openRevokeModal(name) {
     <strong>Êtes-vous sûr de vouloir révoquer l'accès de ${name} ?</strong><br>
     <span style="font-size:12px;color:var(--text2);margin-top:6px;display:block;">Cette action désactivera immédiatement son compte. Elle peut être annulée en le réinvitant.</span>
   </div>`;
-  document.getElementById('modal-overlay').classList.add('open');
-}
-
-function openNewChantierModal() {
-  document.getElementById('modal-title').textContent = 'Nouveau chantier';
-  document.getElementById('modal-sub').textContent = '';
-  document.getElementById('modal-confirm').textContent = 'Créer le chantier';
-  document.getElementById('modal-confirm').className = 'btn btn-primary';
-  modalAction = 'new-chantier';
-  document.getElementById('modal-body').innerHTML = `
-  <div class="form-group"><label class="form-label">Client</label><select class="form-input"><option>Famille Dupont</option><option>Martin SCI</option><option>Bernard SCI</option><option>Famille Leroy</option></select></div>
-  <div class="form-group"><label class="form-label">Intitulé</label><input class="form-input" type="text" placeholder="ex : Rénovation cuisine"></div>
-  <div class="form-group"><label class="form-label">Corps de métier</label><select class="form-input"><option>Électricité</option><option>Plomberie</option><option>Maçonnerie</option><option>Couverture</option><option>Carrelage</option><option>Photovoltaïque</option></select></div>
-  <div class="form-group"><label class="form-label">Adresse</label><input class="form-input" type="text" placeholder="Adresse du chantier"></div>
-  <div class="form-row"><div class="form-group"><label class="form-label">Début</label><input class="form-input" type="date"></div><div class="form-group"><label class="form-label">Fin prévue</label><input class="form-input" type="date"></div></div>
-  <div class="form-group"><label class="form-label">Chef d'équipe</label><select class="form-input"><option>R. Lambert</option><option>V. Mouron</option></select></div>
-  <div class="form-group"><label class="form-label">Équipe</label><select class="form-input"><option>P. Thomas + A. Roux</option><option>P. Thomas seul</option><option>A. Roux seul</option></select></div>`;
   document.getElementById('modal-overlay').classList.add('open');
 }
 
