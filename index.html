@@ -2386,11 +2386,15 @@ const CloudStore = {
     const msgsByConv = {};
     msgRows.forEach(m => {
       if (!msgsByConv[m.conversation_id]) msgsByConv[m.conversation_id] = [];
+      const _isImg = (m.type === 'image');
+      // Image : m.url contient le CHEMIN Storage -> on l'aiguille vers path, url résolue plus tard
+      const _storagePath = (_isImg && m.url && m.url !== '[fichier local]' && !m.url.startsWith('data:')) ? m.url : null;
       msgsByConv[m.conversation_id].push({
         from: m.from_initials,
         text: m.text || '',
         type: m.type || 'text',
-        url: m.url,
+        url: _isImg ? null : m.url,
+        path: _storagePath,
         fileName: m.file_name,
         fileSize: m.file_size,
         duration: m.duration,
@@ -2668,15 +2672,15 @@ const CloudStore = {
   async sendMessage(convId, msg) {
     if (!sb) return;
     try {
-      // ⚡ Pour les images/audio : ne pas envoyer la donnée binaire en base64 à Supabase
-      // (en attendant Supabase Storage). On garde l'image en local uniquement.
+      // Images : on envoie le CHEMIN Storage (msg.path), pas la donnée binaire.
+      // Audio/PDF sans fichier réel -> '[fichier local]' (garde-fou base64 conservé par sécurité).
       const isBinary = msg.url && typeof msg.url === 'string' && msg.url.startsWith('data:');
       const payload = {
         conversation_id: String(convId),
         from_initials: String(msg.from),
         text: msg.text ? String(msg.text) : null,
         type: String(msg.type || 'text'),
-        url: isBinary ? '[fichier local]' : (msg.url ? String(msg.url) : null),
+        url: msg.path ? String(msg.path) : (isBinary ? '[fichier local]' : (msg.url ? String(msg.url) : null)),
         file_name: msg.fileName ? String(msg.fileName) : null,
         file_size: msg.fileSize ? Number(msg.fileSize) : null,
         duration: msg.duration ? Number(msg.duration) : null,
@@ -6529,7 +6533,8 @@ function renderConversation(div) {
     <button class="conv-send-btn" onclick="sendMessage()" title="Envoyer">➤</button>
   </div>`;
 
-  // Scroll to bottom
+  // Résoudre les URL signées des images, puis scroll en bas
+  _resolveMessageImages(conv);
   setTimeout(() => {
     const msgs = document.getElementById('conv-messages');
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
@@ -6544,7 +6549,7 @@ function renderMessagesHTML(conv) {
   let html = '';
   let lastDate = null;
 
-  conv.messages.forEach(m => {
+  conv.messages.forEach((m, _mi) => {
     const d = new Date(m.time);
     const dateStr = d.toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'});
     if (dateStr !== lastDate) {
@@ -6562,9 +6567,13 @@ function renderMessagesHTML(conv) {
     const time = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 
     let bubbleContent;
-    if (m.type === 'image') {
+    if (m.type === 'image' && (m.url || m.path)) {
       bubbleContent = `<div class="msg-bubble image-msg">
-        <img src="${m.url}" alt="" onclick="openMessageImage('${m.url}')">
+        <img src="${m.url || ''}" data-msg-idx="${_mi}" alt="" loading="lazy" onclick="if(this.src)openMessageImage(this.src)">
+        <div class="msg-bubble-time">${time}</div>
+      </div>`;
+    } else if (m.type === 'image') {
+      bubbleContent = `<div class="msg-bubble">🖼️ <em style="color:var(--text3);font-size:12px;">Image indisponible</em>
         <div class="msg-bubble-time">${time}</div>
       </div>`;
     } else if (m.type === 'pdf') {
@@ -6646,23 +6655,63 @@ function sendMessage() {
   }, 50);
 }
 
+// Réduit une image (max 1600px, JPEG ~0.72) avant upload — envois rapides en 4G, bucket léger
+function compressImage(file, maxDim = 1600, quality = 0.72) {
+  return new Promise((resolve) => {
+    const objUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objUrl);
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        const r = Math.min(maxDim / w, maxDim / h);
+        w = Math.round(w * r); h = Math.round(h * r);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(file); }; // fallback : original
+    img.src = objUrl;
+  });
+}
+
+// Résout les URL signées (1h) des images de messages depuis Storage (comme _resolveRapportPhotos)
+async function _resolveMessageImages(conv) {
+  if (!conv || !conv.messages) return;
+  for (let i = 0; i < conv.messages.length; i++) {
+    const m = conv.messages[i];
+    if (m.type !== 'image' || m.url || !m.path) continue; // déjà affichée, ou pas de chemin
+    try {
+      m.url = await sbApi.signedUrl('message-photos', m.path, 3600);
+    } catch (e) { console.warn('☁️ signedUrl message', e.message || e); continue; }
+    const img = document.querySelector(`#conv-messages img[data-msg-idx="${i}"]`);
+    if (img && m.url) img.src = m.url;
+  }
+}
+
 function attachFromGallery() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
   input.multiple = true;
-  input.onchange = (e) => {
+  input.onchange = async (e) => {
     const files = e.target.files;
     if (!files || !files.length) return;
     const conv = CONVERSATIONS.find(c => c.id === currentConversationId);
     if (!conv) return;
-    Array.from(files).forEach(f => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
+    for (const f of Array.from(files)) {
+      try {
+        const blob = await compressImage(f);
+        const safeName = (f.name || 'photo.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `${conv.id}/${Date.now()}-${safeName}`;
+        await sbApi.uploadFile('message-photos', path, blob);
         const newMsg = {
           from: currentUser.initials,
           type: 'image',
-          url: ev.target.result,
+          path,                              // référence partagée (persistée sur Storage)
+          url: URL.createObjectURL(blob),    // aperçu immédiat local pour l'expéditeur
           time: new Date().toISOString(),
           read: true,
         };
@@ -6670,13 +6719,14 @@ function attachFromGallery() {
         DataStore.save();
         CloudStore.sendMessage(conv.id, newMsg);
         document.getElementById('conv-messages').innerHTML = renderMessagesHTML(conv);
-        setTimeout(() => {
-          const msgs = document.getElementById('conv-messages');
-          if (msgs) msgs.scrollTop = msgs.scrollHeight;
-        }, 50);
-      };
-      reader.readAsDataURL(f);
-    });
+        _resolveMessageImages(conv);
+        const msgs = document.getElementById('conv-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+      } catch (err) {
+        console.error('☁️ Envoi image échec', err.message || err);
+        showToast('⚠ Échec de l\'envoi de l\'image');
+      }
+    }
   };
   input.click();
 }
