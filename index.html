@@ -2721,22 +2721,35 @@ const CloudStore = {
     }
   },
 
-  async saveInvitation(inv) {
+  async saveMember(m, isNew) {
     if (!sb) return;
     try {
       const payload = {
-        full_name: inv.name,
-        initials: inv.initials,
-        role: inv.role,
-        email: inv.email,
-        phone: inv.tel,
-        status: inv.status,
-        invited_method: inv.method,
+        initials: String(m.initials),
+        first_name: String(m.firstName || ''),
+        last_name: m.lastName ? String(m.lastName) : null,
+        full_name: String(m.fullName || m.firstName || m.initials),
+        role: String(m.role),
+        role_key: String(m.roleKey),
+        bg_color: m.bg || null,
+        email: m.email || null,
+        phone: m.phone || null,
+        address: m.address || null,
+        birth_date: m.birthDate || null,
+        contract_type: m.contractType || null,
+        contract_start: m.contractStart || null,
+        work_hours: m.workHours || null,
+        skills: m.skills || [],
+        habilitations: m.habilitations || [],
+        status: m.status || 'active',
       };
-      await sbApi.insert('invitations', payload);
+      // is_admin : posé UNIQUEMENT à la création (false). En édition on l'omet
+      // → l'upsert merge-duplicates ne touche pas la colonne (pas de rétrogradation).
+      if (isNew) payload.is_admin = false;
+      await sbApi.upsert('team_members', payload, 'initials');
       this._flashSync();
     } catch (e) {
-      console.error('☁️ saveInvitation', e);
+      console.error('☁️ saveMember', e.message || e);
     }
   },
 
@@ -8818,7 +8831,7 @@ function saveModal() {
 
   closeModal();
   const msgs = {
-    'invite': `✅ Invitation envoyée par ${inviteMethod==='email'?'email':'SMS'}`,
+    'invite': '✅ Membre ajouté',
     'edit-role': '✅ Rôle modifié avec succès',
     'revoke': '🚫 Accès révoqué',
     'new-chantier': '✅ Chantier créé',
@@ -8831,10 +8844,19 @@ function saveModal() {
     const e=document.getElementById('inv-email')?.value||'';
     const t=document.getElementById('inv-tel')?.value||'';
     const cfg=ROLE_CONFIG[r];
-    const newInv = {name:`${p} ${n}`,initials:(p[0]||'X')+(n[0]||'X'),role:r,email:e,tel:t,status:'pending',invited:'22 avr. 2025',method:inviteMethod};
-    INVITED_USERS.push(newInv);
+    const initials=((p[0]||'X')+(n[0]||'X')).toUpperCase();
+    if (TEAM_FULL[initials]) { showToast('⚠ Initiales déjà utilisées : '+initials); return; }
+    const member={
+      initials, firstName:p, lastName:n, fullName:(p[0]||'')+'. '+n,
+      role:cfg.label, roleKey:r, bg:cfg.color,
+      email:e, phone:t, address:'', birthDate:'', contractType:'', contractStart:'',
+      workHours:'', skills:[], habilitations:[{name:'Permis B',expiry:null,status:'valid'}],
+      status:'active'
+    };
+    TEAM_FULL[initials]=member;
+    EQUIPE_MAP[initials]={n:member.fullName, role:member.role, bg:cfg.color};
     DataStore.save();
-    CloudStore.saveInvitation(newInv);
+    CloudStore.saveMember(member, true);
   }
   if (currentPage==='utilisateurs') setTimeout(()=>renderPage('utilisateurs'),300);
 }
@@ -8882,8 +8904,11 @@ function saveTeamMember(isNew) {
   // Mettre à jour aussi EQUIPE_MAP pour cohérence
   EQUIPE_MAP[initials] = {n: updated.fullName, role: updated.role, bg: cfg.color};
 
+  DataStore.save();
+  CloudStore.saveMember(updated, isNew);   // persistance réelle dans team_members
+
   closeModal();
-  showToast(isNew ? '✅ Membre ajouté · Invitation envoyée' : '✅ Modifications enregistrées');
+  showToast(isNew ? '✅ Membre ajouté' : '✅ Modifications enregistrées');
   setTimeout(() => renderPage('equipes'), 200);
 }
 
