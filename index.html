@@ -1505,10 +1505,6 @@ button:active, .btn:active {
 .heures-mois-total{display:flex;align-items:center;gap:6px;color:var(--text2);font-size:13px;font-weight:700;}
 .heures-mois-total .icon{color:var(--text3);}
 
-/* Bouton "Déclarer une astreinte" */
-.heures-astreinte-btn{display:block;width:100%;padding:14px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:'Inter',sans-serif;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;margin-top:24px;transition:all .12s;}
-.heures-astreinte-btn:hover{border-color:var(--blue);color:var(--blue);}
-
 /* PAGE SAISIE D'UNE JOURNÉE */
 .saisie-intro{font-size:13px;color:var(--text2);margin-bottom:18px;}
 .plages-section-title{font-size:14px;font-weight:800;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);}
@@ -2949,13 +2945,13 @@ document.addEventListener('visibilitychange', () => {
 // ══════════════════════════════════════════════════════
 
 const ROLE_CONFIG = {
-  gerant:      { label:'Gérant',          icon:'👔', color:'#3a6fd8', pillClass:'role-gerant',     nav:['dashboard','calendrier','chantiers','clients','rapports','utilisateurs','equipes','messagerie','documents','stocks','heures','donnees'] },
-  charge:      { label:'Chargé d\'affaire',icon:'💼', color:'#e67e22', pillClass:'role-charge',     nav:['dashboard','calendrier','chantiers','clients','rapports','equipes','messagerie','documents','stocks'] },
+  gerant:      { label:'Gérant',          icon:'👔', color:'#3a6fd8', pillClass:'role-gerant',     nav:['dashboard','calendrier','chantiers','clients','rapports','utilisateurs','equipes','messagerie','documents','donnees'] },
+  charge:      { label:'Chargé d\'affaire',icon:'💼', color:'#e67e22', pillClass:'role-charge',     nav:['dashboard','calendrier','chantiers','clients','rapports','equipes','messagerie','documents'] },
   comptable:   { label:'Comptable',       icon:'📊', color:'#27ae60', pillClass:'role-comptable',   nav:['rapports','documents','heures-personnel','messagerie'] },
   'chef-equipe':{ label:'Chef d\'équipe', icon:'🦺', color:'#8e44ad', pillClass:'role-chef-equipe', nav:['mon-planning','mes-chantiers','mes-rapports','mes-horaires','messagerie'] },
   depanneur:   { label:'Dépanneur',       icon:'🛠', color:'#0891b2', pillClass:'role-depanneur',   nav:['mon-planning','mes-chantiers','mes-rapports','mes-horaires','messagerie'] },
   ouvrier:     { label:'Ouvrier',         icon:'👷', color:'#e74c3c', pillClass:'role-ouvrier',     nav:['mon-planning','mes-horaires','messagerie'] },
-  secretaire:  { label:'Secrétaire',      icon:'📋', color:'#9d174d', pillClass:'role-secretaire',  nav:['dashboard','calendrier','chantiers','clients','rapports','equipes','messagerie','stocks'] },
+  secretaire:  { label:'Secrétaire',      icon:'📋', color:'#9d174d', pillClass:'role-secretaire',  nav:['dashboard','calendrier','chantiers','clients','rapports','equipes','messagerie'] },
 };
 
 // ══ BASE UTILISATEURS — Équipe MOURON & FILS ══
@@ -2979,7 +2975,7 @@ const USERS_DB = {
   // Chefs d'équipe
   DA: { name:'Damien',         initials:'DA', role:'chef-equipe',  email:'damien@mouronfilsbtp.fr',        tel:'06 22 33 44 01', status:'active', assignedTo:'DA' },
   CE: { name:'Cédric',         initials:'CE', role:'chef-equipe',  email:'cedric@mouronfilsbtp.fr',        tel:'06 22 33 44 02', status:'active', assignedTo:'CE' },
-  VA: { name:'Valentin',       initials:'VA', role:'chef-equipe',  email:'valentin@mouronfilsbtp.fr',      tel:'06 22 33 44 03', status:'active', assignedTo:'VA' },
+  VM: { name:'Valentin',       initials:'VM', role:'chef-equipe',  email:'valentin.app.code@gmail.com',    tel:'06 22 33 44 03', status:'active', assignedTo:'VM' },
   OC: { name:'Océan',          initials:'OC', role:'chef-equipe',  email:'ocean@mouronfilsbtp.fr',         tel:'06 22 33 44 04', status:'active', assignedTo:'OC' },
   AL: { name:'Alexis',         initials:'AL', role:'chef-equipe',  email:'alexis@mouronfilsbtp.fr',        tel:'06 22 33 44 05', status:'active', assignedTo:'AL' },
   FL: { name:'Flavien',        initials:'FL', role:'chef-equipe',  email:'flavien@mouronfilsbtp.fr',       tel:'06 22 33 44 06', status:'active', assignedTo:'FL' },
@@ -3034,7 +3030,7 @@ const EQUIPE_MAP = {
   // Chefs d'équipe
   DA:{n:'Damien',       role:'Chef d\'équipe',    bg:'#8e44ad'},
   CE:{n:'Cédric',       role:'Chef d\'équipe',    bg:'#7c3aed'},
-  VA:{n:'Valentin',     role:'Chef d\'équipe',    bg:'#6d28d9'},
+  VM:{n:'Valentin',     role:'Chef d\'équipe',    bg:'#6d28d9'},
   OC:{n:'Océan',        role:'Chef d\'équipe',    bg:'#5b21b6'},
   AL:{n:'Alexis',       role:'Chef d\'équipe',    bg:'#4c1d95'},
   FL:{n:'Flavien',      role:'Chef d\'équipe',    bg:'#a855f7'},
@@ -3133,9 +3129,9 @@ const TEAM_FULL = {
     habilitations:[{name:'Permis B', expiry:null, status:'valid'}, {name:'Habilitation gaz', expiry:'2026-09-10', status:'valid'}, {name:'SST', expiry:'2025-08-20', status:'expiring'}],
     status:'active', startDate:'2016-03-15',
   },
-  VA: { initials:'VA', firstName:'Valentin', lastName:'', fullName:'Valentin',
+  VM: { initials:'VM', firstName:'Valentin', lastName:'', fullName:'Valentin',
     role:"Chef d'équipe", roleKey:'chef-equipe', bg:'#6d28d9',
-    email:'valentin@mouronfilsbtp.fr', phone:'06 22 33 44 03', address:'09190 Saint-Lizier',
+    email:'valentin.app.code@gmail.com', phone:'06 22 33 44 03', address:'09190 Saint-Lizier',
     birthDate:'1987-12-03', contractType:'CDI - Cadre technique', contractStart:'2018-07-01',
     workHours:'39h/sem', skills:['Électricité','Domotique','Gestion équipe'],
     habilitations:[{name:'Permis B', expiry:null, status:'valid'}, {name:'Habilitation électrique B2V', expiry:'2026-11-30', status:'valid'}, {name:'CACES R486 cat. A', expiry:'2027-02-15', status:'valid'}],
@@ -5180,7 +5176,6 @@ function renderMesHoraires(div) {
 
   <div id="heures-content">${heuresViewTab === 'resume' ? renderHeuresResume(joursASaisir, moisActuel, moisValides, today) : renderHeuresHistorique(myInitials)}</div>
 
-  <button class="heures-astreinte-btn" onclick="showToast('⚠ Module astreinte — prochainement')">Déclarer une astreinte</button>
   `;
 }
 
