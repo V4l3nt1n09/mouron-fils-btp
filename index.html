@@ -5709,6 +5709,18 @@ let newInterv = {
 
 let nouvIntervStep = 'form'; // pour gérer l'état recherche client
 
+// Prochaine référence d'intervention : basée sur les REFS existantes (pas les ids),
+// car les deux numérotations divergent (ex: chantier id=5 avec ref IN00100).
+// Se baser sur les ids régénérait une ref déjà prise → 409 (contrainte UNIQUE sur ref).
+function nextIntervRef() {
+  let maxN = 99; // plancher : la première ref sera IN00100
+  CHANTIERS.forEach(c => {
+    const m = /^IN(\d+)$/.exec(c.ref || '');
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  });
+  return 'IN' + String(maxN + 1).padStart(5, '0');
+}
+
 function startNewIntervention() {
   // Reset
   const today = new Date();
@@ -5718,7 +5730,7 @@ function startNewIntervention() {
     clientSearch: '',
     newClient: { name:'', type:'particulier', address:'', phone:'', email:'', notes:'' },
     travaux: '',
-    ref: 'IN' + String(nextChantierId).padStart(5, '0'),
+    ref: nextIntervRef(),
     description: '',
     team: [],
     selectedDates: [],
@@ -6225,6 +6237,8 @@ function submitNouvelleIntervention() {
   if (newInterv.selectedDates.length === 0) { showToast('⚠ Sélectionnez au moins une date'); return; }
 
   // Créer le chantier dans la base
+  // Ref régénérée au moment de l'envoi (évite un doublon si un chantier a été créé entre-temps)
+  newInterv.ref = nextIntervRef();
   const sortedDates = newInterv.selectedDates.slice().sort();
   const firstDate = new Date(sortedDates[0]);
   const lastDate = new Date(sortedDates[sortedDates.length - 1]);
@@ -6261,7 +6275,7 @@ function submitNouvelleIntervention() {
   CHANTIERS.unshift(newChantier);
   DataStore.save();
 
-  // Sauvegarder dans Supabase
+  // Sauvegarder dans Supabase — on ATTEND la confirmation avant d'annoncer le succès
   CloudStore.saveChantier(newChantier).then(saved => {
     if (saved) {
       newChantier.id = saved.id;
@@ -6277,13 +6291,19 @@ function submitNouvelleIntervention() {
       events.forEach(e => EVENTS_CAL.push(e));
       DataStore.save();
       CloudStore.saveEvents(events, saved.id);
+
+      showToast(`✅ Intervention créée · ${sortedDates.length} jour(s) planifié(s)`);
+      setTimeout(() => {
+        navigateTo(['gerant','charge'].includes(currentUser.role) ? 'chantiers' : 'dashboard');
+      }, 700);
+    } else {
+      // Échec base → rollback local pour éviter un chantier fantôme (visible chez soi, invisible chez les autres)
+      const idx = CHANTIERS.indexOf(newChantier);
+      if (idx >= 0) CHANTIERS.splice(idx, 1);
+      DataStore.save();
+      showToast('⚠ Sauvegarde refusée par la base — intervention NON créée');
     }
   });
-
-  showToast(`✅ Intervention créée · ${sortedDates.length} jour(s) planifié(s)`);
-  setTimeout(() => {
-    navigateTo(['gerant','charge'].includes(currentUser.role) ? 'chantiers' : 'dashboard');
-  }, 700);
 }
 
 // ══════════════════════════════════════════════════════
