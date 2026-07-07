@@ -163,6 +163,21 @@ select.form-input{cursor:pointer;appearance:none;}
 .header-icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;position:relative;transition:background .12s;}
 .header-icon-btn:hover{background:rgba(255,255,255,.25);}
 .notif-count{position:absolute;top:-3px;right:-5px;background:#f39c12;color:#fff;font-size:9px;font-weight:800;padding:1px 4px;border-radius:8px;min-width:16px;text-align:center;}
+/* Panneau de notifications 🔔 */
+.notif-panel{position:fixed;top:58px;right:10px;width:min(360px,calc(100vw - 20px));max-height:min(480px,70vh);overflow-y:auto;background:var(--white);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:2000;}
+.notif-panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--white);border-radius:12px 12px 0 0;}
+.notif-panel-title{font-size:13px;font-weight:800;color:var(--text);}
+.notif-markall{background:none;border:none;font-size:11px;font-weight:700;color:var(--blue);cursor:pointer;padding:4px;}
+.notif-item{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:rgba(58,111,216,.05);}
+.notif-item.unread{background:rgba(58,111,216,.07);}
+.notif-item-dot{width:8px;height:8px;border-radius:50%;background:var(--blue);margin-top:5px;flex-shrink:0;}
+.notif-item.read .notif-item-dot{background:transparent;}
+.notif-item-title{font-size:12.5px;font-weight:700;color:var(--text);}
+.notif-item-body{font-size:11.5px;color:var(--text3);margin-top:2px;line-height:1.4;}
+.notif-item-time{font-size:10px;color:var(--text3);margin-top:3px;}
+.notif-empty{padding:28px 14px;text-align:center;font-size:12px;color:var(--text3);}
 .user-av-header{width:34px;height:34px;border-radius:50%;background:#1a3a7a;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 .role-banner{background:rgba(255,255,255,.15);border-radius:var(--radius);padding:10px 15px;display:flex;align-items:center;gap:10px;}
 .role-banner-icon{font-size:18px;}
@@ -1901,7 +1916,8 @@ textarea.report-input{resize:vertical;min-height:90px;font-family:'Inter',sans-s
           <span class="save-indicator" id="save-indicator" title="État de la sauvegarde">💾 Auto</span>
           <button class="header-icon-btn" id="hdr-search" onclick="openSearchModal()" title="Rechercher">🔍</button>
           <button class="header-icon-btn" id="hdr-msg" onclick="navigateTo('messagerie')" title="Messagerie">💬<span class="notif-count" id="msg-unread-badge" style="display:none;">0</span></button>
-          <button class="header-icon-btn" id="hdr-notif" style="display:none">🔔<span class="notif-count">3</span></button>
+          <button class="header-icon-btn" id="hdr-notif" style="display:none" onclick="toggleNotifPanel()" title="Notifications">🔔<span class="notif-count" id="notif-badge" style="display:none;">0</span></button>
+          <div class="notif-panel" id="notif-panel" style="display:none;"></div>
           <div class="user-av-header" id="hdr-av">–</div>
         </div>
       </div>
@@ -3987,7 +4003,10 @@ function buildApp() {
   const u = currentUser;
   const cfg = ROLE_CONFIG[u.role];
   document.getElementById('hdr-av').textContent = u.initials;
-  if (['gerant','charge','secretaire'].includes(u.role)) document.getElementById('hdr-notif').style.display = '';
+  document.getElementById('hdr-notif').style.display = '';   // 🔔 pour tous les rôles
+  Notifs.refresh();
+  if (_notifTimer) clearInterval(_notifTimer);
+  _notifTimer = setInterval(() => Notifs.refresh(), 60000);   // rafraîchissement auto 60s
   document.getElementById('header-sub').innerHTML = `
     <div class="role-banner">
       <div class="role-banner-icon">${cfg.icon}</div>
@@ -5447,6 +5466,11 @@ async function validerMoisCompta(initials, ym) {
     if (!VALIDATIONS_MOIS[initials]) VALIDATIONS_MOIS[initials] = {};
     VALIDATIONS_MOIS[initials][ym] = { by, at: new Date().toISOString() };
     _renderDetailHeuresComptaBody(initials);
+    // 🔔 Notifier le membre concerné
+    Notifs.send([initials], 'heures',
+      '✅ Heures du mois validées',
+      `Ton relevé ${ym} a été validé par la comptabilité.`,
+      'mes-horaires', ym);
     showToast('✅ Mois validé');
   } catch (e) {
     console.error('Validation mois échec', e.message || e);
@@ -5460,6 +5484,11 @@ async function devaliderMoisCompta(initials, ym) {
     await sbApi.delete('feuilles_validation', { member_initials: initials, mois: ym });
     if (VALIDATIONS_MOIS[initials]) delete VALIDATIONS_MOIS[initials][ym];
     _renderDetailHeuresComptaBody(initials);
+    // 🔔 Notifier le membre concerné
+    Notifs.send([initials], 'heures',
+      '↩️ Validation du mois annulée',
+      `La validation de ton relevé ${ym} a été annulée par la comptabilité.`,
+      'mes-horaires', ym);
     showToast('Validation annulée');
   } catch (e) {
     console.error('Dé-validation échec', e.message || e);
@@ -6292,6 +6321,12 @@ function submitNouvelleIntervention() {
       DataStore.save();
       CloudStore.saveEvents(events, saved.id);
 
+      // 🔔 Notifier les membres de l'équipe assignée
+      Notifs.send(newChantier.equipe, 'intervention',
+        '🗓 Nouvelle intervention assignée',
+        `${client.name} — ${newInterv.travaux} (${dateLabel})`,
+        'mon-planning', saved.id);
+
       showToast(`✅ Intervention créée · ${sortedDates.length} jour(s) planifié(s)`);
       setTimeout(() => {
         navigateTo(['gerant','charge'].includes(currentUser.role) ? 'chantiers' : 'dashboard');
@@ -6304,6 +6339,146 @@ function submitNouvelleIntervention() {
       showToast('⚠ Sauvegarde refusée par la base — intervention NON créée');
     }
   });
+}
+
+// ══════════════════════════════════════════════════════
+// NOTIFICATIONS 🔔 — table Supabase `notifications` (RLS : chacun ne voit que les siennes)
+// ══════════════════════════════════════════════════════
+
+var NOTIFS = [];
+var _notifTimer = null;
+var _notifOutsideBound = false;
+
+const Notifs = {
+  _esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  },
+
+  _timeAgo(iso) {
+    const diff = Math.max(0, Date.now() - new Date(iso).getTime());
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return "à l'instant";
+    if (min < 60) return `il y a ${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `il y a ${h} h`;
+    const j = Math.floor(h / 24);
+    return j === 1 ? 'hier' : `il y a ${j} j`;
+  },
+
+  // Charger mes notifications (RLS filtre déjà sur mes initiales)
+  async refresh() {
+    if (!currentUser) return;
+    const rows = await sbApi.get('notifications', { order: 'created_at.desc', limit: 50 });
+    NOTIFS = (rows || []).map(n => ({
+      id: n.id, type: n.type, title: n.title, body: n.body || '',
+      linkPage: n.link_page || null, linkId: n.link_id || null,
+      read: !!n.read, createdAt: n.created_at,
+    }));
+    this.updateBadge();
+    const panel = document.getElementById('notif-panel');
+    if (panel && panel.style.display !== 'none') this.renderPanel();
+  },
+
+  unreadCount() { return NOTIFS.filter(n => !n.read).length; },
+
+  updateBadge() {
+    const badge = document.getElementById('notif-badge');
+    if (!badge) return;
+    const n = this.unreadCount();
+    badge.textContent = n > 9 ? '9+' : String(n);
+    badge.style.display = n > 0 ? '' : 'none';
+  },
+
+  renderPanel() {
+    const panel = document.getElementById('notif-panel');
+    if (!panel) return;
+    const items = NOTIFS.length === 0
+      ? `<div class="notif-empty">🔕 Aucune notification</div>`
+      : NOTIFS.map(n => `
+        <div class="notif-item ${n.read ? 'read' : 'unread'}" onclick="openNotif(${Number(n.id)})">
+          <div class="notif-item-dot"></div>
+          <div>
+            <div class="notif-item-title">${this._esc(n.title)}</div>
+            ${n.body ? `<div class="notif-item-body">${this._esc(n.body)}</div>` : ''}
+            <div class="notif-item-time">${this._timeAgo(n.createdAt)}</div>
+          </div>
+        </div>`).join('');
+    panel.innerHTML = `
+      <div class="notif-panel-head">
+        <div class="notif-panel-title">🔔 Notifications</div>
+        ${this.unreadCount() > 0 ? `<button class="notif-markall" onclick="markAllNotifsRead()">Tout marquer lu</button>` : ''}
+      </div>
+      ${items}`;
+  },
+
+  // Créer des notifications pour une liste de destinataires (jamais pour soi-même)
+  async send(recipients, type, title, body, linkPage, linkId) {
+    const me = currentUser ? currentUser.initials : null;
+    const rows = [...new Set(recipients || [])]
+      .filter(r => r && r !== me)
+      .map(r => ({
+        recipient_initials: String(r),
+        type: String(type),
+        title: String(title),
+        body: String(body || ''),
+        link_page: linkPage ? String(linkPage) : null,
+        link_id: (linkId !== undefined && linkId !== null) ? String(linkId) : null,
+        created_by: me,
+      }));
+    if (rows.length === 0) return;
+    try {
+      await sbApi.insert('notifications', rows);   // insert en masse (tableau)
+    } catch (e) {
+      console.warn('🔔 Envoi notifications échec:', e.message || e);
+    }
+  },
+};
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  if (panel.style.display === 'none') {
+    Notifs.renderPanel();
+    panel.style.display = '';
+    Notifs.refresh();   // rafraîchit en arrière-plan à l'ouverture
+    if (!_notifOutsideBound) {
+      _notifOutsideBound = true;
+      document.addEventListener('click', (ev) => {
+        const p = document.getElementById('notif-panel');
+        const btn = document.getElementById('hdr-notif');
+        if (p && p.style.display !== 'none' && !p.contains(ev.target) && !(btn && btn.contains(ev.target))) {
+          p.style.display = 'none';
+        }
+      });
+    }
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function openNotif(id) {
+  const n = NOTIFS.find(x => x.id === id);
+  if (!n) return;
+  if (!n.read) {
+    n.read = true;
+    Notifs.updateBadge();
+    sbApi.update('notifications', { id: id }, { read: true }).catch(() => {});
+  }
+  const panel = document.getElementById('notif-panel');
+  if (panel) panel.style.display = 'none';
+  if (n.linkPage) navigateTo(n.linkPage);
+}
+
+async function markAllNotifsRead() {
+  NOTIFS.forEach(n => { n.read = true; });
+  Notifs.updateBadge();
+  Notifs.renderPanel();
+  try {
+    await sbApi.update('notifications', { recipient_initials: currentUser.initials }, { read: true });
+  } catch (e) {
+    console.warn('🔔 Tout marquer lu échec:', e.message || e);
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -8148,10 +8323,22 @@ function _doSubmitRapport(type) {
     }
     DataStore.save();
     CloudStore.saveRapport(fiche);   // sauvegarde immédiate
+    // 🔔 Notifier le bureau (gérant + chargé d'affaire)
+    Notifs.send(
+      Object.values(TEAM_FULL).filter(m => ['gerant','charge'].includes(m.roleKey)).map(m => m.initials),
+      'rapport', '📋 Rapport final soumis',
+      `${fiche.client} — ${fiche.ref} · par ${fiche.createdBy} · chantier terminé`,
+      'rapports', fiche.id);
     showToast('✅ Rapport finalisé · Chantier basculé en Terminé');
   } else {
     DataStore.save();
     CloudStore.saveRapport(fiche);   // rapport du jour finalisé (chantier reste actif)
+    // 🔔 Notifier le bureau (gérant + chargé d'affaire)
+    Notifs.send(
+      Object.values(TEAM_FULL).filter(m => ['gerant','charge'].includes(m.roleKey)).map(m => m.initials),
+      'rapport', '📋 Rapport du jour soumis',
+      `${fiche.client} — ${fiche.ref} · par ${fiche.createdBy}`,
+      'rapports', fiche.id);
     showToast('📝 Rapport du jour enregistré');
   }
 
