@@ -2090,6 +2090,25 @@ const sbApi = {
     }
   },
 
+  // INSERT SANS RETOUR — pour les lignes qu'on n'a pas le droit de RELIRE (ex. notifications
+  // destinées à quelqu'un d'autre). Avec return=representation, Postgres applique la policy
+  // SELECT sur la ligne retournée → 403 si elle ne nous est pas visible. return=minimal évite ça.
+  async insertSilent(table, data) {
+    const headers = { ...this.headers, 'Prefer': 'return=minimal' };
+    const url = `${this.url}/rest/v1/${table}`;
+    try {
+      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(data) });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`HTTP ${res.status}: ${err}`);
+      }
+      return true;
+    } catch (e) {
+      console.error(`☁️ INSERT (silent) ${table} échec:`, e.message);
+      throw e;
+    }
+  },
+
   // UPDATE
   async update(table, filters, data) {
     const qs = new URLSearchParams();
@@ -6428,7 +6447,7 @@ const Notifs = {
       }));
     if (rows.length === 0) return;
     try {
-      await sbApi.insert('notifications', rows);   // insert en masse (tableau)
+      await sbApi.insertSilent('notifications', rows);   // insert en masse, sans relecture (RLS)
     } catch (e) {
       console.warn('🔔 Envoi notifications échec:', e.message || e);
     }
